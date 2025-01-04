@@ -1,10 +1,7 @@
 import mongoose from "mongoose";
 
 const DB_OPTIONS = {
-  // user:'admin2',
-  // pass:'123',
   dbName: process.env.DB_NAME,
-  // authSource:'schooldb2',
 };
 
 const connectDB = (DATABASE_URL) => {
