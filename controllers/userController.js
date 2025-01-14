@@ -75,12 +75,25 @@ const login = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    req.session.destroy();
-    res.redirect('/');
+    // Destroy the session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Error destroying session:', err);
+        return res.status(500).json({ message: 'Failed to log out. Please try again.' });
+      }
+
+      // Optional: Clear the cookie (if applicable)
+      res.clearCookie('connect.sid'); // Replace 'connect.sid' with your session cookie name if it's different
+
+      // Send a success response
+      res.status(200).json({ message: 'Logged out successfully.' });
+    });
   } catch (error) {
-    console.log(error.message);
+    console.error(error.message);
+    res.status(500).json({ message: 'Internal server error.' });
   }
 };
+
 
 const loadDashboard = async (req, res) => {
   try {

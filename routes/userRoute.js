@@ -10,7 +10,19 @@ dotenv.config();
 
 const userRouter = express.Router();
 const {SESSION_SECRET} = process.env;
-userRouter.use(session({secret:SESSION_SECRET}))
+userRouter.use(
+  session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 3600000,
+    },
+  })
+);
+
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,9 +46,9 @@ userRouter.post('/register', upload.single('image'), register);
 
 // userRouter.get('/login', loadLogin);
 userRouter.post('/login', login);
-// userRouter.get('/logout', logout);
+userRouter.get('/logout', logout);
 
-userRouter.get('/', loadDashboard);
+userRouter.get('/dashboard', loadDashboard);
 
 
 export default userRouter;
