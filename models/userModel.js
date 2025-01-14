@@ -5,7 +5,7 @@ const { Schema, Decimal128 } = mongoose;
 const userSchema = new Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, trim: true }, 
-  img: { type: String, required: false, trim: true },
+  image: { type: String, trim:true},
   themeIndex: { type: Number, default: 7, required: false },
   password: { type: String, required: true, trim: true },
   is_online: { type: Boolean, default: false },
@@ -13,4 +13,4 @@ const userSchema = new Schema({
 
 const userModel = mongoose.model("User", userSchema);
 
-export default { userModel };
+export default userModel ;

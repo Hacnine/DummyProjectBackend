@@ -5,8 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { register, registerLoad, loadLogin, login, logout, loadDashboard } from '../controllers/userController.js';
 import session from 'express-session';
-import dotenv from 'dotenv';
-dotenv.config();
 
 const userRouter = express.Router();
 const {SESSION_SECRET} = process.env;
@@ -34,7 +32,7 @@ userRouter.post('/register', upload.single('image'), register);
 
 // userRouter.get('/login', loadLogin);
 userRouter.post('/login', login);
-// userRouter.get('/logout', logout);
+// userRouter.get('/login', logout);
 
 userRouter.get('/', loadDashboard);
 

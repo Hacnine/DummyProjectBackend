@@ -41,37 +41,32 @@ const login = async (req, res) => {
     const email = req.body.email;
     const password = req.body.password;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
-    }
-
     // Check if the user exists
-    const userData = await userModel.findOne({ email: email }); // Ensure `userModel` is imported and correct
+    const userData = await User.findOne({ email: email });
     if (userData) {
       // Verify the password
       const passwordMatch = await bcrypt.compare(password, userData.password);
       if (passwordMatch) {
-        // Create a session or JWT token
+        // Create a session or JWT token (for frontend communication)
         const userResponse = {
           id: userData._id,
           email: userData.email,
           name: userData.name,
         };
 
-        req.session.user = userResponse;
-        return res.status(200).json({ message: "success", user: userResponse });
+        req.session.user = userResponse; // Optional if using session-based auth
+        res.status(200).json({ message: 'success', user: userResponse });
       } else {
-        return res.status(401).json({ message: "Email or Password is incorrect." });
+        res.status(401).json({ message: 'Email or Password is incorrect.' });
       }
     } else {
-      return res.status(401).json({ message: "Email or Password is incorrect." });
+      res.status(401).json({ message: 'Email or Password is incorrect.' });
     }
   } catch (error) {
-    console.error("Error in login function:", error);
-    return res.status(500).json({ message: "Internal server error", error: error.message });
+    console.error(error.message);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
-
 
 const logout = async (req, res) => {
   try {

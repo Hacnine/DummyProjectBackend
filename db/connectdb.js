@@ -6,7 +6,7 @@ const DB_OPTIONS = {
 
 const connectDB = (DATABASE_URL) => {
   return mongoose
-    .connect(DATABASE_URL, DB_OPTIONS)
+    .connect(DATABASE_URL)
     .then(() => {
       console.log("Bismillah! Connected to the database");
     })
