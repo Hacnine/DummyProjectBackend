@@ -42,7 +42,9 @@ const login = async (req, res) => {
     const password = req.body.password;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required." });
     }
 
     // Check if the user exists
@@ -61,42 +63,50 @@ const login = async (req, res) => {
         req.session.user = userResponse;
         return res.status(200).json({ message: "success", user: userResponse });
       } else {
-        return res.status(401).json({ message: "Email or Password is incorrect." });
+        return res
+          .status(401)
+          .json({ message: "Email or Password is incorrect." });
       }
     } else {
-      return res.status(401).json({ message: "Email or Password is incorrect." });
+      return res
+        .status(401)
+        .json({ message: "Email or Password is incorrect." });
     }
   } catch (error) {
     console.error("Error in login function:", error);
-    return res.status(500).json({ message: "Internal server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 const logout = async (req, res) => {
   try {
     // Destroy the session
     req.session.destroy((err) => {
       if (err) {
-        console.error('Error destroying session:', err);
-        return res.status(500).json({ message: 'Failed to log out. Please try again.' });
+        console.error("Error destroying session:", err);
+        return res
+          .status(500)
+          .json({ message: "Failed to log out. Please try again." });
       }
 
       // Optional: Clear the cookie (if applicable)
-      res.clearCookie('connect.sid'); // Replace 'connect.sid' with your session cookie name if it's different
+      res.clearCookie("connect.sid"); // Replace 'connect.sid' with your session cookie name if it's different
 
       // Send a success response
-      res.status(200).json({ message: 'Logged out successfully.' });
+      res.status(200).json({ message: "Logged out successfully." });
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ message: 'Internal server error.' });
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
-
 const loadDashboard = async (req, res) => {
   try {
+    const users = await userModel.find({ _id: { $ne: req.session.user.id } });
+    res.send({ user: req.session.user, users: users });
   } catch (error) {
     console.log(error.message);
   }

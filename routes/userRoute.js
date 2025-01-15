@@ -1,22 +1,30 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { register, registerLoad, loadLogin, login, logout, loadDashboard } from '../controllers/userController.js';
-import session from 'express-session';
-import dotenv from 'dotenv';
+import express from "express";
+import bodyParser from "body-parser";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import {
+  register,
+  registerLoad,
+  loadLogin,
+  login,
+  logout,
+  loadDashboard,
+} from "../controllers/userController.js";
+import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
+import session from "express-session";
+import dotenv from "dotenv";
 dotenv.config();
 
 const userRouter = express.Router();
-const {SESSION_SECRET} = process.env;
+const { SESSION_SECRET } = process.env;
 userRouter.use(
   session({
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 3600000,
     },
@@ -32,23 +40,25 @@ userRouter.use(bodyParser.urlencoded({ extended: true }));
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '../public/images'));
+    cb(null, path.join(__dirname, "../public/images"));
   },
   filename: function (req, file, cb) {
-    cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
 const upload = multer({ storage: storage });
 
-userRouter.get('/register', registerLoad);
-userRouter.post('/register', upload.single('image'), register);
+userRouter.get("/register", isLogin, registerLoad);
+userRouter.post("/register", upload.single("image"), register);
 
 // userRouter.get('/login', loadLogin);
-userRouter.post('/login', login);
-userRouter.get('/logout', logout);
+userRouter.post("/login", isLogout, login);
+userRouter.get("/logout", isLogin, logout);
 
-userRouter.get('/dashboard', loadDashboard);
-
+userRouter.get("/dashboard", isLogin, loadDashboard);
 
 export default userRouter;
