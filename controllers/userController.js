@@ -13,21 +13,34 @@ const registerLoad = async (req, res) => {
 
 const register = async (req, res) => {
   try {
+    // Hash the password
     const passwordHash = await bcrypt.hash(req.body.password, 10);
 
+    // Create a new user instance
     const user = new userModel({
       name: req.body.name,
       email: req.body.email,
-      img: req?.file?.filename ? "/images/" + req.file.filename : "",
+      image: req?.file?.filename ? "/images/" + req.file.filename : "",
       password: passwordHash,
     });
+
+    // Save the user
     await user.save();
-    res.status(201).json(user);
+    res.status(201).json({ message: "User registered successfully", user });
   } catch (error) {
-    res.status(400).json({ error: error.message });
-    console.log(error.message);
+    if (error.code === 11000) {
+      // Duplicate key error
+      const field = Object.keys(error.keyValue)[0];
+      return res
+        .status(400)
+        .json({ message: `${field} already exists. Please choose another.` });
+    }
+    // Other errors
+    res.status(500).json({ message: "Internal server error", error: error.message });
+    console.error("Error in register function:", error);
   }
 };
+
 
 const loadLogin = async (req, res) => {
   try {

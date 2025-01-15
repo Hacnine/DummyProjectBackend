@@ -1,16 +1,18 @@
-import mongoose, { get } from "mongoose";
-const { Schema, Decimal128 } = mongoose;
+import mongoose from "mongoose";
+const { Schema } = mongoose;
 
-// Student Schema
 const userSchema = new Schema({
-  name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, trim: true }, 
-  image: { type: String, trim:true},
+  name: { type: String, required: true, trim: true, unique: true },
+  email: { type: String, required: true, trim: true, unique: true },
+  image: { type: String, trim: true },
   themeIndex: { type: Number, default: 7, required: false },
   password: { type: String, required: true, trim: true },
   is_online: { type: Boolean, default: false },
 });
 
+// Add indexes for unique constraints
+userSchema.index({ name: 1, email: 1 }, { unique: true });
+
 const userModel = mongoose.model("User", userSchema);
 
-export default userModel ;
+export default userModel;
