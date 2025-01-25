@@ -5,11 +5,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   register,
-  registerLoad,
-  loadLogin,
   login,
   logout,
-  loadDashboard,
+  getLoggedUser,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import session from "express-session";
@@ -52,13 +50,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-userRouter.get("/register", isLogin, registerLoad);
 userRouter.post("/register", upload.single("image"), register);
 
 // userRouter.get('/login', loadLogin);
 userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
-userRouter.get("/dashboard", isLogin, loadDashboard);
+userRouter.get("/dashboard", isLogin, getLoggedUser);
 
 export default userRouter;

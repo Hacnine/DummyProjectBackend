@@ -1,45 +1,50 @@
 import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
+import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
 import connectDB from "./db/connectdb.js";
 import http from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const port = process.env.PORT || "3000";
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// JSON Middleware
 app.use(express.json());
+app.use(cookieParser());
+
+app.use("/api/user", userRouter);
+
+connectDB(DATABASE_URL);
 
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Define the custom namespace
-const usp = io.of('/user-namespace');
+io.use((socket, next) => {
+  const token = socket.handshake.query.token;
+  if (token) {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+      if (err) {
+        return next(new Error('Authentication error'));
+      }
+      socket.user = decoded;
+      next();
+    });
+  } else {
+    next(new Error('Authentication error'));
+  }
+});
 
-// Handle connections in the namespace
-usp.on('connection', async(socket) => {
-  console.log('A user connected to /user-namespace');
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.user);
 
-  // Listen for custom events (optional)
-  socket.on('custom-event', (data) => {
-    console.log('Received data:', data);
-    // Emit a response
-    socket.emit('response-event', { message: 'Hello from server!' });
-  });
-
-  // Handle disconnections
   socket.on('disconnect', () => {
-    console.log('User disconnected from /user-namespace');
+    console.log('User disconnected');
   });
 });
 
-
-app.use('/', userRouter);
-connectDB(DATABASE_URL);
-
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+server.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });

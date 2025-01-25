@@ -1,5 +1,7 @@
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import { storeToken, getToken, removeToken } from "../utils/localStorageService.js";
 
 const registerLoad = async (req, res) => {
   try {
@@ -42,54 +44,24 @@ const register = async (req, res) => {
 };
 
 
-const loadLogin = async (req, res) => {
-  try {
-  } catch (error) {
-    console.log(error.message);
-  }
-};
 
 const login = async (req, res) => {
   try {
-    const email = req.body.email;
-    const password = req.body.password;
-
+    const { email, password } = req.body;
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required." });
+      return res.status(400).json({ message: "Email and password are required." });
     }
-
-    // Check if the user exists
-    const userData = await userModel.findOne({ email: email }); // Ensure `userModel` is imported and correct
-    if (userData) {
-      // Verify the password
-      const passwordMatch = await bcrypt.compare(password, userData.password);
-      if (passwordMatch) {
-        // Create a session or JWT token
-        const userResponse = {
-          id: userData._id,
-          email: userData.email,
-          name: userData.name,
-        };
-
-        req.session.user = userResponse;
-        return res.status(200).json({ message: "success", user: userResponse });
-      } else {
-        return res
-          .status(401)
-          .json({ message: "Email or Password is incorrect." });
-      }
+    const user = await userModel.findOne({ email });
+    if (user && await bcrypt.compare(password, user.password)) {
+      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+      storeToken(res, { access: accessToken, refresh: refreshToken });
+      res.status(200).json({ message: "Login successful", user });
     } else {
-      return res
-        .status(401)
-        .json({ message: "Email or Password is incorrect." });
+      res.status(401).json({ message: "Email or Password is incorrect." });
     }
   } catch (error) {
-    console.error("Error in login function:", error);
-    return res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -112,16 +84,37 @@ const logout = async (req, res) => {
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ message: "Internal server error." });
+    res.status(500).json({ message: "Internal server error." }); 
   }
 };
 
-const loadDashboard = async (req, res) => {
+const getLoggedUser = async (req, res) => {
   try {
-    const users = await userModel.find({ _id: { $ne: req.session.user.id } });
-    res.send({ user: req.session.user, users: users });
+    const { access_token } = getToken(req);
+    if (!access_token) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const decoded = jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET);
+    const user = await userModel.findById(decoded.id);
+    res.status(200).json(user);
   } catch (error) {
-    console.log(error.message);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
-export { register, registerLoad, loadLogin, login, logout, loadDashboard };
+
+const refreshToken = async (req, res) => {
+  try {
+    const { refresh_token } = getToken(req);
+    if (!refresh_token) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const decoded = jwt.verify(refresh_token, process.env.REFRESH_TOKEN_SECRET);
+    const accessToken = jwt.sign({ id: decoded.id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+    storeToken(res, { access: accessToken, refresh: refresh_token });
+    res.status(200).json({ accessToken });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
+export { register, login, logout, getLoggedUser, refreshToken };
