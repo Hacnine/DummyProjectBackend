@@ -53,8 +53,9 @@ const login = async (req, res) => {
     }
     const user = await userModel.findOne({ email });
     if (user && await bcrypt.compare(password, user.password)) {
-      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
-      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7m' });
+      // console.log("accessToken", accessToken)
+      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '1m' });
       storeToken(res, { access: accessToken, refresh: refreshToken });
       res.status(200).json({ message: "Login successful", user });
     } else {
@@ -65,28 +66,18 @@ const login = async (req, res) => {
   }
 };
 
+
+
 const logout = async (req, res) => {
   try {
-    // Destroy the session
-    req.session.destroy((err) => {
-      if (err) {
-        console.error("Error destroying session:", err);
-        return res
-          .status(500)
-          .json({ message: "Failed to log out. Please try again." });
-      }
-
-      // Optional: Clear the cookie (if applicable)
-      res.clearCookie("connect.sid"); // Replace 'connect.sid' with your session cookie name if it's different
-
-      // Send a success response
-      res.status(200).json({ message: "Logged out successfully." });
-    });
+    removeToken(res);
+    res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ message: "Internal server error." }); 
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
+
 
 const getLoggedUser = async (req, res) => {
   try {

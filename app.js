@@ -1,17 +1,22 @@
-import dotenv from "dotenv";
-dotenv.config();
 import express from "express";
 import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
 import connectDB from "./db/connectdb.js";
+import cors from "cors";
 import http from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
 const port = process.env.PORT || "3000";
 const DATABASE_URL = process.env.DATABASE_URL;
 
+app.use(cors({
+  origin: process.env.ORIGIN_URL ||'http://localhost:3002', // Update this to match your frontend URL
+  credentials: true
+}));
 app.use(express.json());
 app.use(cookieParser());
 
