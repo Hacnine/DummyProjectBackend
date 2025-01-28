@@ -56,6 +56,6 @@ userRouter.post("/register", upload.single("image"), register);
 userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
-userRouter.get("/dashboard", isLogin, getLoggedUser);
+userRouter.get("/loggedusers", isLogin, getLoggedUser);
 
 export default userRouter;
