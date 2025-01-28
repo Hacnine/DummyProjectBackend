@@ -13,20 +13,32 @@ const app = express();
 const port = process.env.PORT || "3000";
 const DATABASE_URL = process.env.DATABASE_URL;
 
+// CORS configuration to allow requests from your frontend origin
 app.use(cors({
-  origin: process.env.ORIGIN_URL ||'http://localhost:3002', // Update this to match your frontend URL
+  origin: process.env.ORIGIN_URL || 'http://localhost:3002',
   credentials: true
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
+// User routes
 app.use("/api/user", userRouter);
 
+// Connect to the database
 connectDB(DATABASE_URL);
 
+// Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { 
+    origin: process.env.ORIGIN_URL || 'http://localhost:3002',
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  },
+});
 
+// Middleware to authenticate Socket.IO connections using JWT
 io.use((socket, next) => {
   const token = socket.handshake.query.token;
   if (token) {
@@ -42,6 +54,7 @@ io.use((socket, next) => {
   }
 });
 
+// Handle Socket.IO connections
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.user);
 
@@ -50,6 +63,7 @@ io.on('connection', (socket) => {
   });
 });
 
+// Start the server
 server.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
