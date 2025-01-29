@@ -9,31 +9,26 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 dotenv.config();
 
+// Initialize app
 const app = express();
 const port = process.env.PORT || "3000";
 const DATABASE_URL = process.env.DATABASE_URL;
+const originUrl = process.env.ORIGIN_URL || 'http://localhost:3002'; 
 
-// CORS configuration to allow requests from your frontend origin
+// Middleware configurations
 app.use(cors({
-  origin: process.env.ORIGIN_URL || 'http://localhost:3002',
+  origin: originUrl, 
   credentials: true
 }));
-
 app.use(express.json());
 app.use(cookieParser());
-
-// User routes
-app.use("/api/user", userRouter);
-
-// Connect to the database
-connectDB(DATABASE_URL);
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    origin: process.env.ORIGIN_URL || 'http://localhost:3002',
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: originUrl,  
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -44,6 +39,7 @@ io.use((socket, next) => {
   if (token) {
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
       if (err) {
+        console.error("Socket authentication failed:", err.message);
         return next(new Error('Authentication error'));
       }
       socket.user = decoded;
@@ -62,6 +58,18 @@ io.on('connection', (socket) => {
     console.log('User disconnected');
   });
 });
+
+// User routes with io instance
+app.use("/api/user", (req, res, next) => {
+  req.io = io;  // Attach io instance to request
+  next();
+}, userRouter);
+
+// Connect to the database
+connectDB(DATABASE_URL);
+
+
+
 
 // Start the server
 server.listen(port, () => {

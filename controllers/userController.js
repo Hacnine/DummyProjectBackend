@@ -3,43 +3,33 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/localStorageService.js";
 
-const registerLoad = async (req, res) => {
-  try {
-    // Send a JSON response for loading the registration page
-    res.status(200).json({ message: "Register endpoint" });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-    console.log(error.message);
-  }
-};
-
 const register = async (req, res) => {
   try {
-    // Hash the password
-    const passwordHash = await bcrypt.hash(req.body.password, 10);
 
-    // Create a new user instance
-    const user = new userModel({
-      name: req.body.name,
-      email: req.body.email,
-      image: req?.file?.filename ? "/images/" + req.file.filename : "",
-      password: passwordHash,
-    });
-
-    // Save the user
-    await user.save();
-    res.status(201).json({ message: "User registered successfully", user });
-  } catch (error) {
-    if (error.code === 11000) {
-      // Duplicate key error
-      const field = Object.keys(error.keyValue)[0];
-      return res
-        .status(400)
-        .json({ message: `${field} already exists. Please choose another.` });
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "All fields are required." });
     }
-    // Other errors
+    const existingUser = await userModel.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists." });
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = new userModel({ name, email, password: passwordHash });
+    await user.save();
+
+    const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
+    const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+    storeToken(res, { access: accessToken, refresh: refreshToken });
+
+    // Emit the loggedUsersUpdate event
+    const loggedUsers = await userModel.find({});
+    req.io.emit("loggedUsersUpdate", loggedUsers);
+
+    res.status(201).json({ message: "User registered successfully", user, accessToken });
+  } catch (error) {
     res.status(500).json({ message: "Internal server error", error: error.message });
-    console.error("Error in register function:", error);
   }
 };
 
@@ -53,11 +43,11 @@ const login = async (req, res) => {
     }
     const user = await userModel.findOne({ email });
     if (user && await bcrypt.compare(password, user.password)) {
-      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7m' });
-      // console.log("accessToken", accessToken)
-      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '1m' });
+      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
+      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
       storeToken(res, { access: accessToken, refresh: refreshToken });
-      res.status(200).json({ message: "Login successful", user });
+
+      res.status(200).json({ message: "Login successful", user, accessToken });
     } else {
       res.status(401).json({ message: "Email or Password is incorrect." });
     }
@@ -77,6 +67,22 @@ const logout = async (req, res) => {
   }
 };
 
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete user from the database
+    await userModel.findByIdAndDelete(id);
+
+    // Emit the updated user list
+    const allUsers = await userModel.find({});
+    req.io.emit("loggedUsersUpdate", allUsers);
+
+    res.status(200).json({ message: "User deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
 
 
 const getLoggedUser = async (req, res) => {
@@ -86,8 +92,9 @@ const getLoggedUser = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const decoded = jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET);
-    const user = await userModel.findById(decoded.id);
-    res.status(200).json(user);
+    // Fetch all users except the logged-in user
+    const users = await userModel.find({ _id: { $ne: decoded.id } });
+    res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
