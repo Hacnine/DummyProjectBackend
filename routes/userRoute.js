@@ -7,7 +7,7 @@ import {
   register,
   login,
   logout,
-  getLoggedUser,
+  getAllUsers,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import session from "express-session";
@@ -56,6 +56,6 @@ userRouter.post("/register", upload.single("image"), register);
 userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
-userRouter.get("/loggedusers", isLogin, getLoggedUser);
+userRouter.get("/allusers", isLogin, getAllUsers);
 
 export default userRouter;

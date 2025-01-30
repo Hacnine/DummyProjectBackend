@@ -24,8 +24,10 @@ const register = async (req, res) => {
     storeToken(res, { access: accessToken, refresh: refreshToken });
 
     // Emit the loggedUsersUpdate event
-    const loggedUsers = await userModel.find({});
-    req.io.emit("loggedUsersUpdate", loggedUsers);
+    // loggedUsers
+    // 
+    const getAllUsers = await userModel.find({});
+    req.io.emit("getAllUsersUpdate", getAllUsers);
 
     res.status(201).json({ message: "User registered successfully", user, accessToken });
   } catch (error) {
@@ -76,7 +78,7 @@ const deleteUser = async (req, res) => {
 
     // Emit the updated user list
     const allUsers = await userModel.find({});
-    req.io.emit("loggedUsersUpdate", allUsers);
+    req.io.emit("getAllUsersUpdate", allUsers);
 
     res.status(200).json({ message: "User deleted successfully." });
   } catch (error) {
@@ -85,7 +87,7 @@ const deleteUser = async (req, res) => {
 };
 
 
-const getLoggedUser = async (req, res) => {
+const getAllUsers = async (req, res) => {
   try {
     const { access_token } = getToken(req);
     if (!access_token) {
@@ -115,4 +117,4 @@ const refreshToken = async (req, res) => {
   }
 };
 
-export { register, login, logout, getLoggedUser, refreshToken };
+export { register, login, logout, getAllUsers, refreshToken };
