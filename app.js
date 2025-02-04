@@ -7,6 +7,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
+import userModel from "./models/userModel.js";
 dotenv.config();
 
 // Initialize app
@@ -50,28 +51,41 @@ io.use((socket, next) => {
   }
 });
 
-// Handle Socket.IO connections
-io.on('connection', (socket) => {
-  console.log('A user connected:', socket.user);
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected');
+
+// Online users set
+const onlineUsers = new Set();
+
+// Handle Socket.IO connections
+io.on("connection", (socket) => {
+  console.log("A user connected:", socket.user);
+
+  if (socket.user?.id) {
+    onlineUsers.add(socket.user.id);
+    broadcastOnlineUsers();
+    console.log('onlineUsers:', onlineUsers);
+  }
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.user);
+    onlineUsers.delete(socket.user?.id);
+    broadcastOnlineUsers();
   });
 });
 
-// User routes with io instance
+// Function to emit online users
+const broadcastOnlineUsers = async () => {
+  const loggedUsers = await userModel.find({ _id: { $in: Array.from(onlineUsers) } });
+  io.emit("loggedUsersUpdate", loggedUsers);
+};
+
+// Attach io instance to req for routes
 app.use("/api/user", (req, res, next) => {
-  req.io = io;  // Attach io instance to request
+  req.io = io;
+  req.onlineUsers = onlineUsers;
   next();
 }, userRouter);
 
-// Connect to the database
+// Connect to DB and start server
 connectDB(DATABASE_URL);
-
-
-
-
-// Start the server
-server.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+server.listen(port, () => console.log(`Server running on port ${port}`));

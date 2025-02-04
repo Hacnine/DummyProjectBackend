@@ -1,11 +1,14 @@
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { storeToken, getToken, removeToken } from "../utils/localStorageService.js";
+import {
+  storeToken,
+  getToken,
+  removeToken,
+} from "../utils/localStorageService.js";
 
 const register = async (req, res) => {
   try {
-
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required." });
@@ -19,34 +22,54 @@ const register = async (req, res) => {
     const user = new userModel({ name, email, password: passwordHash });
     await user.save();
 
-    const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
-    const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+    const accessToken = jwt.sign(
+      { id: user._id },
+      process.env.ACCESS_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
     storeToken(res, { access: accessToken, refresh: refreshToken });
 
     // Emit the loggedUsersUpdate event
     // loggedUsers
-    // 
+    //
     const getAllUsers = await userModel.find({});
     req.io.emit("getAllUsersUpdate", getAllUsers);
 
-    res.status(201).json({ message: "User registered successfully", user, accessToken });
+    res
+      .status(201)
+      .json({ message: "User registered successfully", user, accessToken });
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
-
 
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required." });
     }
     const user = await userModel.findOne({ email });
-    if (user && await bcrypt.compare(password, user.password)) {
-      const accessToken = jwt.sign({ id: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7d' });
-      const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+    if (user && (await bcrypt.compare(password, user.password))) {
+      const accessToken = jwt.sign(
+        { id: user._id },
+        process.env.ACCESS_TOKEN_SECRET,
+        { expiresIn: "7d" }
+      );
+      const refreshToken = jwt.sign(
+        { id: user._id },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: "7d" }
+      );
       storeToken(res, { access: accessToken, refresh: refreshToken });
 
       res.status(200).json({ message: "Login successful", user, accessToken });
@@ -54,18 +77,20 @@ const login = async (req, res) => {
       res.status(401).json({ message: "Email or Password is incorrect." });
     }
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
-
 
 const logout = async (req, res) => {
   try {
     removeToken(res);
     res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -82,10 +107,11 @@ const deleteUser = async (req, res) => {
 
     res.status(200).json({ message: "User deleted successfully." });
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 const getAllUsers = async (req, res) => {
   try {
@@ -98,7 +124,23 @@ const getAllUsers = async (req, res) => {
     const users = await userModel.find({ _id: { $ne: decoded.id } });
     res.status(200).json(users);
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+const getOnlineUsers = async (req, res) => {
+  try {
+    
+    const onlineUsersList = await userModel.find({
+      _id: { $in: Array.from(req.onlineUsers) },
+    });
+    res.status(200).json(onlineUsersList);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -109,12 +151,18 @@ const refreshToken = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const decoded = jwt.verify(refresh_token, process.env.REFRESH_TOKEN_SECRET);
-    const accessToken = jwt.sign({ id: decoded.id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+    const accessToken = jwt.sign(
+      { id: decoded.id },
+      process.env.ACCESS_TOKEN_SECRET,
+      { expiresIn: "15m" }
+    );
     storeToken(res, { access: accessToken, refresh: refresh_token });
     res.status(200).json({ accessToken });
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
-export { register, login, logout, getAllUsers, refreshToken };
+export { register, login, logout, getAllUsers, getOnlineUsers, refreshToken };
