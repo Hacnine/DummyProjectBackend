@@ -1,141 +1,149 @@
-import express from "express";
-import cookieParser from "cookie-parser";
-import userRouter from "./routes/userRoute.js";
-import connectDB from "./db/connectdb.js";
-import cors from "cors";
-import http from 'http';
-import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import dotenv from "dotenv";
-import userModel from "./models/userModel.js"; // Ensure you have the correct import for your user model
-dotenv.config();
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import axios from 'axios';
+import io from 'socket.io-client';
 
-const app = express();
-const port = process.env.PORT || "3000";
-const DATABASE_URL = process.env.DATABASE_URL;
+const UserAuthContext = createContext();
 
-// CORS configuration to allow requests from your frontend origin
-app.use(cors({
-  origin: process.env.ORIGIN_URL || 'http://localhost:3002', // Update this to match your frontend URL
-  credentials: true
-}));
+// Custom hook to use the UserAuthContext
+const useUserAuth = () => useContext(UserAuthContext);
 
-app.use(express.json());
-app.use(cookieParser());
+const UserAuthProvider = ({ children }) => {
+  const baseUrl = "http://localhost:3001/api/user/";
+  const socketUrl = "http://localhost:3001/";
 
-// Connect to the database
-connectDB(DATABASE_URL);
-
-// Create HTTP server and set up Socket.IO with CORS and token-based authentication
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { 
-    origin: process.env.ORIGIN_URL || 'http://localhost:3002', // Update this to match your frontend URL 
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
-
-// Middleware to authenticate Socket.IO connections using JWT
-io.use((socket, next) => {
-  const token = socket.handshake.query.token;
-  if (token) {
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-      if (err) {
-        console.error("Socket authentication failed:", err.message);
-        return next(new Error('Authentication error'));
-      }
-      socket.user = decoded;
-      next();
-    });
-  } else {
-    next(new Error('Authentication error'));
-  }
-});
-
-// Online users set
-const onlineUsers = new Set();
-
-// Socket.IO connection handling
-io.on("connection", (socket) => {
-  console.log("A user connected:", socket.user);
-
-  // Add user to online users list
-  onlineUsers.add(socket.user.id);
-
-  // Broadcast the updated online users list
-  const broadcastLoggedUsers = async () => {
-    const loggedUsers = await userModel.find({ _id: { $in: Array.from(onlineUsers) } });
-    io.emit("loggedUsersUpdate", loggedUsers);
-  };
-  broadcastLoggedUsers();
-
-  // Handle user disconnection
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.user);
-
-    // Remove user from online users
-    onlineUsers.delete(socket.user.id);
-
-    // Broadcast the updated online users list
-    broadcastLoggedUsers();
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
   });
-});
 
-// User routes with io instance
-app.use("/api/user", (req, res, next) => {
-  req.io = io;  // Attach io instance to request
-  next();
-}, userRouter);
+  const [allUsers, setAllUsers] = useState(() => {
+    const savedUsers = localStorage.getItem('getAllUsers');
+    return savedUsers ? JSON.parse(savedUsers) : [];
+  });
 
-// Start the server
-server.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  
+  // Use useRef for socket to persist across renders
+  const socketRef = useRef(null);
 
-
-
-
- // Real-time updates for logged users
- useEffect(() => {
-  if (socket) {
-    // Listen for updates to logged users
-    socket.on("loggedUsersUpdate", (updatedUsers) => {
-      setAllUsers(updatedUsers);
-      localStorage.setItem("loggedusers", JSON.stringify(updatedUsers));
-    });
-
-    // Clean up the event listener
-    return () => {
-      socket.off("loggedUsersUpdate");
-    };
-  }
-}, [socket]);
-
-// Fetch logged users (fallback)
-const getLoggedUser = useCallback(async () => {
-  try {
-    const response = await axios.get(`${baseUrl}loggedusers/`, {
-      withCredentials: true, // Ensure cookies are sent with the request
-    });
-    setAllUsers(response.data);
-    localStorage.setItem("loggedusers", JSON.stringify(response.data));
-    return response.data;
-  } catch (error) {
-    console.error("Error fetching logged user:", error);
-    logoutUser(); // Log out if the backend is not reachable or token is expired
-  }
-}, [baseUrl, logoutUser]);
-
-// Initialize authentication on app start
-useEffect(() => {
-  const initializeAuth = async () => {
+  // Register User
+  const registerUser = useCallback(async (userData) => {
     try {
-      await getLoggedUser(); // Fetch initial user data on page load
+      const response = await axios.post(`${baseUrl}register/`, userData, {
+        headers: { 'Content-type': 'application/json' },
+      });
+      return response.data;
     } catch (error) {
-      console.error("Error initializing auth:", error);
+      console.error("Registration error:", error);
+      throw error;
     }
-  };
+  }, [baseUrl]);
 
-  initializeAuth();
-}, [getLoggedUser]);
+  // Login User
+  const loginUser = useCallback(async (userData) => {
+    try {
+      const response = await axios.post(`${baseUrl}login/`, userData, {
+        headers: { 'Content-type': 'application/json' },
+        withCredentials: true,
+      });
+
+      setUser(response.data.user);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      // Initialize socket connection
+      socketRef.current = io(socketUrl, { query: { token: response.data.accessToken } });
+
+      return response.data;
+    } catch (error) {
+      console.error("Login error:", error);
+      throw error;
+    }
+  }, [baseUrl, socketUrl]);
+
+  // Logout User
+  const logoutUser = useCallback(async () => {
+    try {
+      await axios.get(`${baseUrl}logout/`, { withCredentials: true });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem('user');
+
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    }
+  }, [baseUrl]);
+
+  // Fetch all users
+  const getAllUsers = useCallback(async () => {
+    try {
+      const response = await axios.get(`${baseUrl}allusers/`, { withCredentials: true });
+      setAllUsers(response.data);
+      localStorage.setItem("getAllUsers", JSON.stringify(response.data));
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      logoutUser();
+    }
+  }, [baseUrl, logoutUser]);
+
+  // Fetch online users
+  const fetchOnlineUsers = useCallback(async () => {
+    try {
+      const response = await axios.get(`${baseUrl}onlineusers/`, { withCredentials: true });
+      setOnlineUsers(response.data);
+    } catch (error) {
+      console.error("Error fetching online users:", error);
+    }
+  }, [baseUrl]);
+
+  // Initialize authentication on mount
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        await getAllUsers();
+        await fetchOnlineUsers();
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      }
+    };
+    initializeAuth();
+  }, [getAllUsers, fetchOnlineUsers]);
+
+  // Socket event listeners
+  useEffect(() => {
+    if (socketRef.current) {
+      socketRef.current.on("getAllUsersUpdate", (updatedUsers) => {
+        setAllUsers(updatedUsers);
+        localStorage.setItem("getAllUsers", JSON.stringify(updatedUsers));
+      });
+
+      socketRef.current.on("loggedUsersUpdate", (users) => {
+        setOnlineUsers(users);
+      });
+
+      return () => {
+        socketRef.current.off("getAllUsersUpdate");
+        socketRef.current.off("loggedUsersUpdate");
+      };
+    }
+  }, []);
+
+  return (
+    <UserAuthContext.Provider value={{
+      user,
+      allUsers,
+      onlineUsers,
+      registerUser,
+      loginUser,
+      logoutUser,
+      socket: socketRef.current,
+    }}>
+      {children}
+    </UserAuthContext.Provider>
+  );
+};
+
+export { UserAuthProvider, useUserAuth };

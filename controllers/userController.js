@@ -115,34 +115,40 @@ const deleteUser = async (req, res) => {
 
 const getAllUsers = async (req, res) => {
   try {
-    const { access_token } = getToken(req);
-    if (!access_token) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    const decoded = jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET);
-    // Fetch all users except the logged-in user
-    const users = await userModel.find({ _id: { $ne: decoded.id } });
-    res.status(200).json(users);
+    const users = await userModel.find({}, "-password"); // Fetch all users
+    const filteredUsers = users.filter(user => user._id.toString() !== req.user.id); // Exclude logged-in user
+    res.json(filteredUsers);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({ message: "Error fetching users" });
   }
 };
 
+
+
 const getOnlineUsers = async (req, res) => {
   try {
-    
-    const onlineUsersList = await userModel.find({
-      _id: { $in: Array.from(req.onlineUsers) },
-    });
+    const loggedInUserId = req.user?.id?.toString(); // Ensure it's a string
+
+    if (!loggedInUserId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Fetch details of active users excluding the logged-in user
+    const onlineUsersList = await userModel.find(
+      { _id: { $in: Array.from(req.onlineUsers) } },
+      "-password" // Exclude password field
+    );
+
     res.status(200).json(onlineUsersList);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
+
+
 
 const refreshToken = async (req, res) => {
   try {

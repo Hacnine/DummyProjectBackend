@@ -2,7 +2,6 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
 import connectDB from "./db/connectdb.js";
-import cookie from "cookie";
 import cors from "cors";
 import http from 'http';
 import { Server } from 'socket.io';
@@ -37,28 +36,22 @@ const io = new Server(server, {
 
 // Middleware to authenticate Socket.IO connections using JWT
 io.use((socket, next) => {
-  const cookies = socket.handshake.headers.cookie;
-  
-  if (!cookies) {
-    return next(new Error("Authentication error: No cookies found"));
+  const token = socket.handshake.query.token;
+  if (token) {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+      if (err) {
+        console.error("Socket authentication failed:", err.message);
+        return next(new Error('Authentication error'));
+      }
+      socket.user = decoded;
+      next();
+    });
+  } else {
+    next(new Error('Authentication error'));
   }
-
-  const parsedCookies = cookie.parse(cookies);
-  const token = parsedCookies.access_token; // Ensure this matches your cookie name
-
-  if (!token) {
-    return next(new Error("Authentication error: No token found"));
-  }
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if (err) {
-      console.error("Socket authentication failed:", err.message);
-      return next(new Error("Authentication error"));
-    }
-    socket.user = decoded;
-    next();
-  });
 });
+
+
 
 // Online users set
 const onlineUsers = new Set();
@@ -69,31 +62,21 @@ io.on("connection", (socket) => {
 
   if (socket.user?.id) {
     onlineUsers.add(socket.user.id);
-    broadcastOnlineUsers(socket.user.id); // Pass user ID
-    console.log("onlineUsers:", onlineUsers);
+    broadcastOnlineUsers();
+    console.log('onlineUsers:', onlineUsers);
   }
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.user);
     onlineUsers.delete(socket.user?.id);
-    broadcastOnlineUsers(socket.user.id); // Pass user ID again
+    broadcastOnlineUsers();
   });
 });
 
 // Function to emit online users
-const broadcastOnlineUsers = async (excludedUserId) => {
-  const loggedUsers = await userModel.find(
-    { _id: { $in: Array.from(onlineUsers) } },
-    "-password"
-  );
-
-  const filteredUsers = loggedUsers.filter(
-    (user) => user._id.toString() !== excludedUserId
-  );
-
-  console.log("Broadcasting online users:", filteredUsers); // Add logging
-
-  io.emit("loggedUsersUpdate", filteredUsers);
+const broadcastOnlineUsers = async () => {
+  const loggedUsers = await userModel.find({ _id: { $in: Array.from(onlineUsers) } });
+  io.emit("loggedUsersUpdate", loggedUsers);
 };
 
 // Attach io instance to req for routes
