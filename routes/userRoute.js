@@ -56,6 +56,6 @@ userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
 userRouter.get("/allusers", isLogin, getAllUsers);
-userRouter.get("/onlineusers", isLogin, getOnlineUsers);
+// userRouter.get("/onlineusers", isLogin, getOnlineUsers);
 
 export default userRouter;

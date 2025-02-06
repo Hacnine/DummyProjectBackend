@@ -1,6 +1,7 @@
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+
 import {
   storeToken,
   getToken,
@@ -35,8 +36,6 @@ const register = async (req, res) => {
     storeToken(res, { access: accessToken, refresh: refreshToken });
 
     // Emit the loggedUsersUpdate event
-    // loggedUsers
-    //
     const getAllUsers = await userModel.find({});
     req.io.emit("getAllUsersUpdate", getAllUsers);
 
@@ -71,6 +70,9 @@ const login = async (req, res) => {
         { expiresIn: "7d" }
       );
       storeToken(res, { access: accessToken, refresh: refreshToken });
+
+      // Emit the loggedUsersUpdate event
+      req.io.emit("loggedUsersUpdate", Array.from(req.onlineUsers));
 
       res.status(200).json({ message: "Login successful", user, accessToken });
     } else {
@@ -123,8 +125,6 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-
-
 const getOnlineUsers = async (req, res) => {
   try {
     const loggedInUserId = req.user?.id?.toString(); // Ensure it's a string
@@ -147,8 +147,6 @@ const getOnlineUsers = async (req, res) => {
     });
   }
 };
-
-
 
 const refreshToken = async (req, res) => {
   try {

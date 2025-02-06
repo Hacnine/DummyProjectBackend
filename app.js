@@ -65,16 +65,16 @@ const onlineUsers = new Set();
 
 // Handle Socket.IO connections
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.user);
+  // console.log("A user connected:", socket.user);
 
   if (socket.user?.id) {
     onlineUsers.add(socket.user.id);
-    broadcastOnlineUsers(socket.user.id); // Pass user ID
-    console.log("onlineUsers:", onlineUsers);
+    broadcastOnlineUsers(socket.user.id); /// Pass user ID
+    // console.log("onlineUsers:", onlineUsers);
   }
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.user);
+    // console.log("User disconnected:", socket.user);
     onlineUsers.delete(socket.user?.id);
     broadcastOnlineUsers(socket.user.id); // Pass user ID again
   });
@@ -87,13 +87,8 @@ const broadcastOnlineUsers = async (excludedUserId) => {
     "-password"
   );
 
-  const filteredUsers = loggedUsers.filter(
-    (user) => user._id.toString() !== excludedUserId
-  );
 
-  console.log("Broadcasting online users:", filteredUsers); // Add logging
-
-  io.emit("loggedUsersUpdate", filteredUsers);
+  io.emit("loggedUsersUpdate", loggedUsers);
 };
 
 // Attach io instance to req for routes
