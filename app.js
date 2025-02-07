@@ -62,34 +62,54 @@ io.use((socket, next) => {
 
 // Online users set
 const onlineUsers = new Set();
+const userSocketMap = new Map();
 
 // Handle Socket.IO connections
 io.on("connection", (socket) => {
-  // console.log("A user connected:", socket.user);
-
+  // Handle initial connection
   if (socket.user?.id) {
     onlineUsers.add(socket.user.id);
-    broadcastOnlineUsers(socket.user.id); /// Pass user ID
-    // console.log("onlineUsers:", onlineUsers);
+    userSocketMap.set(socket.user.id, socket.id);
   }
 
+  // Handle custom userOnline event
+  socket.on("userOnline", (userId) => {
+    onlineUsers.add(userId);
+    userSocketMap.set(userId, socket.id);
+    sendActiveUsersExceptCurrent(userId); // Emit active users excluding the current user
+  });
+
+  // Handle disconnection
   socket.on("disconnect", () => {
-    // console.log("User disconnected:", socket.user);
     onlineUsers.delete(socket.user?.id);
-    broadcastOnlineUsers(socket.user.id); // Pass user ID again
+    userSocketMap.delete(socket.user?.id);
   });
 });
 
-// Function to emit online users
-const broadcastOnlineUsers = async (excludedUserId) => {
-  const loggedUsers = await userModel.find(
-    { _id: { $in: Array.from(onlineUsers) } },
-    "-password"
-  );
 
+// Function to emit online users excluding the specified user ID
+const sendActiveUsersExceptCurrent = async (excludedUserId) => {
+  try {
+    // Fetch full user objects, excluding passwords
+    const loggedUsers = await userModel.find(
+      { _id: { $in: Array.from(onlineUsers) } },
+      "-password"
+    );
 
-  io.emit("loggedUsersUpdate", loggedUsers);
+    // Filter users by excluding the current user
+    const filteredUsers = loggedUsers.filter(user => user._id.toString() !== excludedUserId);
+
+    // Find socket ID of the excluded user
+    const excludedSocketId = userSocketMap.get(excludedUserId);
+
+    if (excludedSocketId) {
+      io.to(excludedSocketId).emit("loggedUsersUpdate", filteredUsers); // Emit full objects
+    }
+  } catch (error) {
+    console.error("Error fetching filtered online users:", error);
+  }
 };
+
 
 // Attach io instance to req for routes
 app.use("/api/user", (req, res, next) => {
