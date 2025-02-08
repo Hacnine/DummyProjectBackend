@@ -60,63 +60,72 @@ io.use((socket, next) => {
   });
 });
 
-// Online users set
+// Online users tracking
 const onlineUsers = new Set();
-const userSocketMap = new Map();
+const userSocketMap = new Map(); // Stores userId -> socketId mapping
+const userDataCache = new Map(); // Store user details in memory
 
-// Handle Socket.IO connections
-io.on("connection", (socket) => {
-  // Handle initial connection
+io.on("connection", async (socket) => {
   if (socket.user?.id) {
-    onlineUsers.add(socket.user.id);
     userSocketMap.set(socket.user.id, socket.id);
+    onlineUsers.add(socket.user.id);
+
+    // Store user details in cache if not already stored
+    if (!userDataCache.has(socket.user.id)) {
+      const user = await userModel.findById(socket.user.id, "-password");
+      if (user) {
+        userDataCache.set(socket.user.id, user);
+        // console.log(userDataCache.set(socket.user.id, user))
+      }
+    }
+
+    await sendOnlineUsersList(); // Ensure it's awaited
   }
 
-  // Handle custom userOnline event
-  socket.on("userOnline", (userId) => {
-    onlineUsers.add(userId);
-    userSocketMap.set(userId, socket.id);
-    sendActiveUsersExceptCurrent(userId); // Emit active users excluding the current user
+  // Handle userOnline event (optional)
+  socket.on("userOnline", async (userId) => {
+    if (userId && !onlineUsers.has(userId)) {
+      onlineUsers.add(userId);
+      userSocketMap.set(userId, socket.id);
+      await sendOnlineUsersList();
+    }
   });
 
-  // Handle disconnection
-  socket.on("disconnect", () => {
-    onlineUsers.delete(socket.user?.id);
+  socket.on("disconnect", async () => {
     userSocketMap.delete(socket.user?.id);
+    onlineUsers.delete(socket.user?.id);
+    await sendOnlineUsersList();
   });
 });
 
+// Function to send updated online users list to each user individually
+const sendOnlineUsersList = async () => {
+  const loggedUsers = Array.from(onlineUsers)
+    .map((userId) => userDataCache.get(userId))
+    .filter((user) => user); // Remove undefined users
 
-// Function to emit online users excluding the specified user ID
-const sendActiveUsersExceptCurrent = async (excludedUserId) => {
-  try {
-    // Fetch full user objects, excluding passwords
-    const loggedUsers = await userModel.find(
-      { _id: { $in: Array.from(onlineUsers) } },
-      "-password"
-    );
-
-    // Filter users by excluding the current user
-    const filteredUsers = loggedUsers.filter(user => user._id.toString() !== excludedUserId);
-
-    // Find socket ID of the excluded user
-    const excludedSocketId = userSocketMap.get(excludedUserId);
-
-    if (excludedSocketId) {
-      io.to(excludedSocketId).emit("loggedUsersUpdate", filteredUsers); // Emit full objects
+  onlineUsers.forEach((userId) => {
+    const socketId = userSocketMap.get(userId);
+    if (socketId) {
+      io.to(socketId).emit(
+        "loggedUsersUpdate",
+        loggedUsers.filter((user) => user && user._id.toString() !== userId) // Exclude self
+      );
     }
-  } catch (error) {
-    console.error("Error fetching filtered online users:", error);
-  }
+  });
 };
 
 
 // Attach io instance to req for routes
-app.use("/api/user", (req, res, next) => {
-  req.io = io;
-  req.onlineUsers = onlineUsers;
-  next();
-}, userRouter);
+app.use(
+  "/api/user",
+  (req, res, next) => {
+    req.io = io;
+    req.onlineUsers = onlineUsers;
+    next();
+  },
+  userRouter
+);
 
 // Connect to DB and start server
 connectDB(DATABASE_URL);
