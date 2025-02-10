@@ -120,11 +120,26 @@ const sendOnlineUsersList = async () => {
 // Attach io instance to req for routes
 const attachIo = (req, res, next) => {
   req.io = io;
+  req.onlineUsers = onlineUsers;
   next();
 };
 
 app.use("/api/user", attachIo, userRouter);
 app.use("/api", attachIo, conversationRouter);
+
+
+
+// app.use(
+//   "/api/user",
+//   (req, res, next) => {
+//     req.io = io;
+//     req.onlineUsers = onlineUsers;
+//     next();
+//   },
+//   userRouter
+// );
+
+// app.use('/api', conversationRouter);
 
 
 // Connect to DB and start server
