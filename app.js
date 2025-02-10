@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
+import conversationRouter from './routes/conversationRoute.js';
 import connectDB from "./db/connectdb.js";
 import cookie from "cookie";
 import cors from "cors";
@@ -30,7 +31,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
     origin: originUrl,  
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE", "WS", "WSS", "SSR", "SSRS", "SSRSP", ],
     credentials: true,
   },
 });
@@ -82,7 +83,7 @@ io.on("connection", async (socket) => {
     await sendOnlineUsersList(); // Ensure it's awaited
   }
 
-  // Handle userOnline event (optional)
+  // Handle user-online event (optional)
   socket.on("userOnline", async (userId) => {
     if (userId && !onlineUsers.has(userId)) {
       onlineUsers.add(userId);
@@ -117,15 +118,14 @@ const sendOnlineUsersList = async () => {
 
 
 // Attach io instance to req for routes
-app.use(
-  "/api/user",
-  (req, res, next) => {
-    req.io = io;
-    req.onlineUsers = onlineUsers;
-    next();
-  },
-  userRouter
-);
+const attachIo = (req, res, next) => {
+  req.io = io;
+  next();
+};
+
+app.use("/api/user", attachIo, userRouter);
+app.use("/api", attachIo, conversationRouter);
+
 
 // Connect to DB and start server
 connectDB(DATABASE_URL);

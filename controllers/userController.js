@@ -125,28 +125,6 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-const getOnlineUsers = async (req, res) => {
-  try {
-    const loggedInUserId = req.user?.id?.toString(); // Ensure it's a string
-
-    if (!loggedInUserId) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    // Fetch details of active users excluding the logged-in user
-    const onlineUsersList = await userModel.find(
-      { _id: { $in: Array.from(req.onlineUsers) } },
-      "-password" // Exclude password field
-    );
-
-    res.status(200).json(onlineUsersList);
-  } catch (error) {
-    res.status(500).json({
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
-};
 
 const refreshToken = async (req, res) => {
   try {
@@ -169,4 +147,4 @@ const refreshToken = async (req, res) => {
   }
 };
 
-export { register, login, logout, getAllUsers, getOnlineUsers, refreshToken };
+export { register, login, logout, getAllUsers, refreshToken };

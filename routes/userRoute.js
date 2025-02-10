@@ -8,7 +8,6 @@ import {
   login,
   logout,
   getAllUsers,
-  getOnlineUsers,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import session from "express-session";
