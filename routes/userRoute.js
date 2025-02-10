@@ -8,6 +8,7 @@ import {
   login,
   logout,
   getAllUsers,
+  refreshToken,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import session from "express-session";
@@ -50,6 +51,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+userRouter.get("/refresh-token", refreshToken);
 userRouter.post("/register", upload.single("image"), register);
 userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);

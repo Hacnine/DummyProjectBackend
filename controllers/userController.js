@@ -141,9 +141,13 @@ const refreshToken = async (req, res) => {
     storeToken(res, { access: accessToken, refresh: refresh_token });
     res.status(200).json({ accessToken });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: "Refresh token expired" });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
 
