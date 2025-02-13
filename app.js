@@ -31,7 +31,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
     origin: originUrl,  
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE", "WS", "WSS", "SSR", "SSRS", "SSRSP", ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH" ],
     credentials: true,
   },
 });
@@ -90,6 +90,15 @@ io.on("connection", async (socket) => {
       userSocketMap.set(userId, socket.id);
       await sendOnlineUsersList();
     }
+
+      // Handle sendMessage event
+  socket.on("sendMessage", (message) => {
+    const receiverSocketId = userSocketMap.get(message.receiver);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('receiveMessage', message);
+    }
+  });
+
   });
 
   socket.on("disconnect", async () => {
@@ -126,21 +135,6 @@ const attachIo = (req, res, next) => {
 
 app.use("/api/user", attachIo, userRouter);
 app.use("/api", attachIo, conversationRouter);
-
-
-
-// app.use(
-//   "/api/user",
-//   (req, res, next) => {
-//     req.io = io;
-//     req.onlineUsers = onlineUsers;
-//     next();
-//   },
-//   userRouter
-// );
-
-// app.use('/api', conversationRouter);
-
 
 // Connect to DB and start server
 connectDB(DATABASE_URL);
