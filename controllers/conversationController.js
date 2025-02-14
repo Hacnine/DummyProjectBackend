@@ -38,4 +38,44 @@ const getMessages = async (req, res) => {
   res.status(200).json(messages);
 };
 
-export { createConversation, getMessages };
+// Get all conversations for the logged-in user
+ const getConversations = async (req, res) => {
+  try {
+    const userId = req.user.id; // Get logged-in user ID from request
+
+    const conversations = await Conversation.find({ participants: userId })
+      .populate("participants", "name image") // Get user details
+      .lean(); // Convert Mongoose documents to plain objects
+
+    // Format the conversations to return the correct name & image
+    const formattedConversations = conversations.map((convo) => {
+      if (convo.group.is_group) {
+        return {
+          _id: convo._id,
+          name: convo.group.name,
+          image: convo.group.image || "/default-group.png",
+          last_message: convo.last_message,
+          is_group: true,
+        };
+      } else {
+        // Find the other user in the conversation
+        const otherUser = convo.participants.find((user) => user._id.toString() !== userId);
+        return {
+          _id: convo._id,
+          name: otherUser?.name || "Unknown",
+          image: otherUser?.image || "/default-avatar.png",
+          last_message: convo.last_message,
+          is_group: false,
+        };
+      }
+    });
+
+    res.json(formattedConversations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+export { createConversation, getMessages, getConversations };
