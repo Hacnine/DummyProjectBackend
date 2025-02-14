@@ -6,7 +6,13 @@ const conversationSchema = new Schema(
     participants: [
       { type: Schema.Types.ObjectId, ref: "User", required: true },
     ],
-    is_active: { type: Boolean, default: false },
+    receiverId: { type: Schema.Types.ObjectId, ref: "User" },
+    senderId: { type: Schema.Types.ObjectId, ref: "User" },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejcted"],
+      default: "pending",
+    },
     group: {
       is_group: { type: Boolean, default: false },
       name: { type: String },
