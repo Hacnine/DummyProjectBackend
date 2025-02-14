@@ -3,17 +3,29 @@ import Message from '../models/chatModel.js';
 
 const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
-  const existingConversation = await Conversation.findOne({
-    participants: { $all: [senderId, receiverId] },
-  });
-  if (existingConversation) {
-    return res.status(200).json(existingConversation);
+  try {
+    // Check if a conversation already exists between the two users
+    const existingConversation = await Conversation.findOne({
+      participants: { $all: [senderId, receiverId] },
+    });
+
+    if (existingConversation) {
+      return res.status(200).json(existingConversation);
+    }
+
+    // If no conversation exists, create a new one
+    const newConversation = new Conversation({
+      participants: [senderId, receiverId],
+      senderId: senderId,
+      receiverId: receiverId,
+    });
+
+    await newConversation.save();
+    res.status(201).json(newConversation);
+  } catch (error) {
+    console.error('Error creating conversation:', error);
+    res.status(500).json({ message: 'Server error' });
   }
-  const newConversation = new Conversation({
-    participants: [senderId, receiverId],
-  });
-  await newConversation.save();
-  res.status(201).json(newConversation);
 };
 
 const getMessages = async (req, res) => {
