@@ -10,6 +10,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
+import Conversation from "./models/conversationModel.js";
 dotenv.config();
 
 // Initialize app
@@ -76,7 +77,6 @@ io.on("connection", async (socket) => {
       const user = await userModel.findById(socket.user.id, "-password");
       if (user) {
         userDataCache.set(socket.user.id, user);
-        // console.log(userDataCache.set(socket.user.id, user))
       }
     }
 
@@ -90,15 +90,23 @@ io.on("connection", async (socket) => {
       userSocketMap.set(userId, socket.id);
       await sendOnlineUsersList();
     }
+  });
 
-      // Handle sendMessage event
+  // Handle typing event
+  socket.on('joinRoom', (conversationId) => {
+    socket.join(conversationId);
+  });
+
+  socket.on('typing', async ({ conversationId, userId, isTyping }) => {
+    io.to(conversationId).emit('typing', { userId, isTyping });
+  });
+
+  // Handle sendMessage event
   socket.on("sendMessage", (message) => {
     const receiverSocketId = userSocketMap.get(message.receiver);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit('receiveMessage', message);
     }
-  });
-
   });
 
   socket.on("disconnect", async () => {
@@ -124,7 +132,6 @@ const sendOnlineUsersList = async () => {
     }
   });
 };
-
 
 // Attach io instance to req for routes
 const attachIo = (req, res, next) => {

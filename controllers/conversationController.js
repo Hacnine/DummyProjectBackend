@@ -41,7 +41,7 @@ const getMessages = async (req, res) => {
 // Get all conversations for the logged-in user
  const getConversations = async (req, res) => {
   try {
-    const userId = req.user.id; // Get logged-in user ID from request
+    const { userId } = req.params; // Get logged-in user ID from request
 
     const conversations = await Conversation.find({ participants: userId })
       .populate("participants", "name image") // Get user details
