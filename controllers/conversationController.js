@@ -21,6 +21,11 @@ const createConversation = async (req, res) => {
     });
 
     await newConversation.save();
+    
+    // save status in redis
+    // const status = await getConversationState(conversationId) || response.data.status;
+    // res.status(201).json({ ...response.data, status });
+
     res.status(201).json(newConversation);
   } catch (error) {
     console.error('Error creating conversation:', error);
