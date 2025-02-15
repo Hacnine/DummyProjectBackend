@@ -20,6 +20,10 @@ const createConversation = async (req, res) => {
       receiverId: receiverId,
     });
 
+    // save status in redis
+    // const status = await getConversationState(conversationId) || response.data.status;
+    // res.status(201).json({ ...response.data, status });
+
     await newConversation.save();
     res.status(201).json(newConversation);
   } catch (error) {
