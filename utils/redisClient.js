@@ -1,27 +1,24 @@
-// redisClient.js
-import redis from 'redis';
-const client = redis.createClient();
+import { createClient } from 'redis';
+// redis-server.exe
+const redisClient = createClient();
 
-client.on('error', (err) => {
-  console.error('Redis error:', err);
+redisClient.on('error', (err) => {
+  console.error('Redis client error:', err);
 });
 
-// Function to set conversation state in Redis
+redisClient.on('connect', () => {
+  console.log('Redis client connected');
+});
+
+redisClient.connect();
+
 const setConversationState = async (conversationId, state) => {
-  await client.set(`conversation:${conversationId}:state`, state);
+  try {
+    await redisClient.set(conversationId, state);
+  } catch (error) {
+    console.error('Error setting conversation state in Redis:', error);
+  }
 };
 
-// Function to get conversation state from Redis
-const getConversationState = async (conversationId) => {
-  return new Promise((resolve, reject) => {
-    client.get(`conversation:${conversationId}:state`, (err, result) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(result);
-      }
-    });
-  });
-};
 
-export { setConversationState, getConversationState };
+export { setConversationState, redisClient };
