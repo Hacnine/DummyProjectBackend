@@ -19,6 +19,7 @@ const conversationSchema = new Schema(
       image: { type: String }, // Group profile picture
       admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
     },
+    themeIndex: { type: Number, default: 6, required: false },
     last_message: {
       message: { type: String, default: "" },
       sender: { type: Schema.Types.ObjectId, ref: "User" }, // Last sender

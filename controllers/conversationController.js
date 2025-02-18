@@ -32,15 +32,6 @@ const createConversation = async (req, res) => {
   }
 };
 
-const getMessages = async (req, res) => {
-  const { conversationId } = req.params;
-  const conversation = await Conversation.findById(conversationId);
-  if (!conversation) {
-    return res.status(404).json({ message: 'Conversation not found' });
-  }
-  const messages = await Message.find({ conversation: conversationId });
-  res.status(200).json(messages);
-};
 
 // Get all conversations for the logged-in user
  const getConversations = async (req, res) => {
@@ -82,4 +73,4 @@ const getMessages = async (req, res) => {
 };
 
 
-export { createConversation, getMessages, getConversations };
+export { createConversation, getConversations };
