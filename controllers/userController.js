@@ -1,12 +1,12 @@
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-
 import {
   storeToken,
   getToken,
   removeToken,
 } from "../utils/localStorageService.js";
+import {redisClient} from "../utils/redisClient.js";
 
 const register = async (req, res) => {
   try {
@@ -123,6 +123,27 @@ const getAllUsers = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Error fetching users" });
   }
+};
+
+
+
+const getUserInfo = async (userId) => {
+  const cacheKey = `user:${userId}`;
+
+  // Check if user data exists in Redis
+  const cachedUser = await redisClient.get(cacheKey);
+  if (cachedUser) {
+    return JSON.parse(cachedUser); // Return cached user data
+  }
+
+  // Fetch from MongoDB if not in cache
+  const user = await userModel.findById(userId).select("name image");
+  if (!user) return null;
+
+  // Store in Redis with 1-hour expiration
+  await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
+
+  return user;
 };
 
 
