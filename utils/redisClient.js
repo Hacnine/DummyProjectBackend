@@ -1,6 +1,8 @@
 import { createClient } from 'redis';
-// redis-server.exe
-const redisClient = createClient();
+
+const redisClient = createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+});
 
 redisClient.on('error', (err) => {
   console.error('Redis client error:', err);
@@ -10,7 +12,7 @@ redisClient.on('connect', () => {
   console.log('Redis client connected');
 });
 
-redisClient.connect();
+redisClient.connect().catch(console.error);
 
 const setConversationState = async (conversationId, state) => {
   try {
@@ -19,6 +21,5 @@ const setConversationState = async (conversationId, state) => {
     console.error('Error setting conversation state in Redis:', error);
   }
 };
-
 
 export { setConversationState, redisClient };
