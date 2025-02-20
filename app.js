@@ -142,7 +142,7 @@ const attachIo = (req, res, next) => {
 };
 
 app.use("/api/user", attachIo, userRouter);
-app.use("/api", attachIo, conversationRouter);
+app.use("/api/conversations", attachIo, conversationRouter);
 app.use("/api/messages", attachIo, messageRouter);
 // Connect to DB and start server
 connectDB(DATABASE_URL);
