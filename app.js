@@ -2,6 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
 import conversationRouter from './routes/conversationRoute.js';
+import messageRouter from './routes/messageRoute.js';
 import connectDB from "./db/connectdb.js";
 import cookie from "cookie";
 import cors from "cors";
@@ -10,7 +11,6 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
-import Conversation from "./models/conversationModel.js";
 dotenv.config();
 
 // Initialize app
@@ -24,6 +24,7 @@ app.use(cors({
   origin: originUrl, 
   credentials: true
 }));
+app.use('/images', express.static('public/images'));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -142,7 +143,7 @@ const attachIo = (req, res, next) => {
 
 app.use("/api/user", attachIo, userRouter);
 app.use("/api", attachIo, conversationRouter);
-
+app.use("/api/messages", attachIo, messageRouter);
 // Connect to DB and start server
 connectDB(DATABASE_URL);
 server.listen(port, () => console.log(`Server running on port ${port}`));
