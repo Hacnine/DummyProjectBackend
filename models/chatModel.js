@@ -9,7 +9,7 @@ const messageSchema = new Schema(
   {
     sender: { type: Schema.Types.ObjectId, ref: "User", required: true },
     receiver: { type: Schema.Types.ObjectId, ref: "User" }, // Null for group messages
-    text: { type: String },
+    text: { type: String, default:"This message is deleted." },
     attachments: [
       {
         file_url: { type: String },
@@ -24,6 +24,7 @@ const messageSchema = new Schema(
         timestamp: { type: Date, default: Date.now },
       },
     ],
+    deletefor: [{ type: Schema.Types.ObjectId, ref: "User" }],
     deleted: { type: Boolean, default: false },
     conversation: { type: Schema.Types.ObjectId, ref: "Conversation", required: true },
     reactions: [

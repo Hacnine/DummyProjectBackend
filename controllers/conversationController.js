@@ -58,6 +58,9 @@ const getAllConversations = async (req, res) => {
       } else {
         return {
           _id: convo._id,
+          senderId: convo.senderId,
+          receiverId: convo.receiverId,
+          status: convo.status,
           last_message: convo.last_message,
           is_group: false,
           participants: convo.participants.map((user) => ({
@@ -75,6 +78,7 @@ const getAllConversations = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 const acceptMessageRequest = async (req, res) => {
   try {
