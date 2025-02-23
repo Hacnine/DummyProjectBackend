@@ -1,11 +1,10 @@
 import express from 'express';
-import { createConversation, getAllConversations, acceptMessageRequest, deleteMessageRequest  } from '../controllers/conversationController.js';
+import { createConversation, getAllConversations, updateMessageRequestStatus  } from '../controllers/conversationController.js';
 
 const router = express.Router();
 
 router.post('/', createConversation);
 router.get('/:userId', getAllConversations); 
-router.patch("/accept-request/:conversationId", acceptMessageRequest);
-router.delete("/delete-request/:conversationId", deleteMessageRequest);
+router.patch("/update-message-request-status/:conversationId", updateMessageRequestStatus);
 
 export default router;

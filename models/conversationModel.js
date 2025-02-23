@@ -10,7 +10,7 @@ const conversationSchema = new Schema(
     senderId: { type: Schema.Types.ObjectId, ref: "User" },
     status: {
       type: String,
-      enum: ["pending", "accepted", "rejcted"],
+      enum: ["pending", "accepted", "rejected"],
       default: "pending",
     },
     group: {

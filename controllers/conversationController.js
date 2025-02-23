@@ -79,10 +79,15 @@ const getAllConversations = async (req, res) => {
   }
 };
 
-
-const acceptMessageRequest = async (req, res) => {
+const updateMessageRequestStatus = async (req, res) => {
   try {
-    const { conversationId } = req.params; 
+    const { conversationId } = req.params;
+    const { status } = req.body; // "pending", "accepted", or "rejected"
+    // Validate status
+    const validStatuses = ["pending", "accepted", "rejected"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
+    }
 
     // Find the conversation
     const conversation = await Conversation.findById(conversationId);
@@ -90,67 +95,59 @@ const acceptMessageRequest = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Check if it's a pending request
-    if (conversation.status !== "pending") {
-
-      return res.status(400).json({ message: "Message request already processed" });
+    // Prevent unnecessary updates
+    if (conversation.status === status) {
+      return res.status(400).json({ message: `Message request is already ${status}` });
     }
+    const statusTransitions = {
+      rejected: ["pending", "accepted"], // ✅ Allow moving directly to "accepted"
+      pending: ["accepted", "rejected"], 
+      accepted: [], // No further transitions after "accepted"
+    };
+    
+    if (!statusTransitions[conversation.status]?.includes(status)) {
+      return res.status(400).json({ message: "Invalid status transition" });
+    }
+    
+    // // Business logic: Ensure valid transitions
+    // const statusTransitions = {
+    //   rejected: ["pending"], // Can only move to "pending", not "accepted" directly
+    //   pending: ["accepted", "rejected"], // Can move to "accepted" or "rejected"
+    // };
+    
+   
 
-    // Update conversation status to accepted
-    conversation.status = "accepted";
+    // if (!statusTransitions[conversation.status]?.includes(status)) {
+    //   return res.status(400).json({ message: "Invalid status transition" });
+    // }
+
+    // Update status
+    conversation.status = status;
     await conversation.save();
 
-    // Set conversation state in Redis
+    // Determine event name
+    const eventMapping = {
+      pending: "messageRequestPending",
+      accepted: "messageRequestAccepted",
+      rejected: "messageRequestRejected",
+    };
 
     // Notify participants
     conversation.participants.forEach((participant) => {
-      req.io.to(participant.toString()).emit("messageRequestAccepted", {
+      req.io.to(participant.toString()).emit(eventMapping[status], {
         conversationId: conversation._id,
-        message: "Message request accepted",
+        message: `Message request ${status}`,
       });
     });
 
-    res.status(200).json({ message: "Message request accepted", conversation });
+    res.status(200).json({ message: `Message request ${status}`, conversation });
   } catch (error) {
-    console.error("Error accepting message request:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-
-const deleteMessageRequest = async (req, res) => {
-  try {
-    const { conversationId } = req.params; // Get conversation ID from request
-
-    // Find the conversation
-    const conversation = await Conversation.findById(conversationId);
-    console.log('conversation')
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    // Check if it's still a pending request
-    if (conversation.status !== "pending") {
-      return res.status(400).json({ message: "Message request already processed" });
-    }
-
-    // Delete the conversation
-    await Conversation.findByIdAndDelete(conversationId);
-    // Emit event to notify all participants
-    conversation.participants.forEach((participant) => {
-      req.io.to(participant.toString()).emit("messageRequestDeleted", {
-        conversationId,
-        message: "Message request deleted",
-      });
-    });
-
-    res.status(200).json({ message: "Message request deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting message request:", error);
+    console.error("Error updating message request status:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 
 
-export { createConversation, getAllConversations, acceptMessageRequest, deleteMessageRequest };
+
+export { createConversation, getAllConversations, updateMessageRequestStatus };
