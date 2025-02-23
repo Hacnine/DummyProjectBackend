@@ -6,7 +6,7 @@ import {
   getToken,
   removeToken,
 } from "../utils/localStorageService.js";
-import {redisClient} from "../utils/redisClient.js";
+import { redisClient } from "../utils/redisClient.js";
 
 const register = async (req, res) => {
   try {
@@ -118,32 +118,42 @@ const deleteUser = async (req, res) => {
 const getAllUsers = async (req, res) => {
   try {
     const users = await userModel.find({}, "-password"); // Fetch all users
-    const filteredUsers = users.filter(user => user._id.toString() !== req.user.id); // Exclude logged-in user
+    const filteredUsers = users.filter(
+      (user) => user._id.toString() !== req.user.id
+    ); // Exclude logged-in user
     res.json(filteredUsers);
   } catch (error) {
     res.status(500).json({ message: "Error fetching users" });
   }
 };
+const getUserInfo = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const cacheKey = `user:${userId}`;
 
+    // Check if user data exists in Redis
+    const cachedUser = await redisClient.get(cacheKey);
+    if (cachedUser) {
+      // console.log("User found in cache:", cachedUser); // ✅ Debugging log
+      return res.json(JSON.parse(cachedUser)); // ✅ Ensure response is sent
+    }
 
+    // Fetch from MongoDB if not in cache
+    const user = await userModel.findById(userId).select("-password").lean();
+    if (!user) {
+      // console.log("User not found in DB"); // ✅ Debugging log
+      return res.status(404).json({ message: "User not found" }); // ✅ Send 404 response
+    }
 
-const getUserInfo = async (userId) => {
-  const cacheKey = `user:${userId}`;
+    // Store in Redis with 1-hour expiration
+    await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
+    // console.log("User stored in cache:", user); // ✅ Debugging log
 
-  // Check if user data exists in Redis
-  const cachedUser = await redisClient.get(cacheKey);
-  if (cachedUser) {
-    return JSON.parse(cachedUser); // Return cached user data
+    return res.json(user); // ✅ Ensure response is sent
+  } catch (error) {
+    console.error("Error fetching user info:", error);
+    return res.status(500).json({ message: "Failed to get user info" }); // ✅ Return proper error response
   }
-
-  // Fetch from MongoDB if not in cache
-  const user = await userModel.findById(userId).select("name image");
-  if (!user) return null;
-
-  // Store in Redis with 1-hour expiration
-  await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
-
-  return user;
 };
 
 
@@ -162,14 +172,16 @@ const refreshToken = async (req, res) => {
     storeToken(res, { access: accessToken, refresh: refresh_token });
     res.status(200).json({ accessToken });
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
+    if (error.name === "TokenExpiredError") {
       return res.status(401).json({ message: "Refresh token expired" });
     }
-    if (error.name === 'JsonWebTokenError') {
+    if (error.name === "JsonWebTokenError") {
       return res.status(401).json({ message: "Invalid refresh token" });
     }
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
-export { register, login, logout, getAllUsers, refreshToken };
+export { register, login, logout, getAllUsers, getUserInfo, refreshToken };

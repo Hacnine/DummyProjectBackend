@@ -9,6 +9,7 @@ import {
   logout,
   getAllUsers,
   refreshToken,
+  getUserInfo,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import session from "express-session";
@@ -57,6 +58,6 @@ userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
 userRouter.get("/allusers", isLogin, getAllUsers);
-// userRouter.get("/onlineusers", isLogin, getOnlineUsers);
+userRouter.get("/userinfo/:userId", isLogin, getUserInfo);
 
 export default userRouter;
