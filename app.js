@@ -141,9 +141,9 @@ const attachIo = (req, res, next) => {
   next();
 };
 
-app.use("/api/user", attachIo, userRouter);
-app.use("/api/conversations", attachIo, conversationRouter);
-app.use("/api/messages", attachIo, messageRouter);
+app.use("/user", attachIo, userRouter);
+app.use("/conversations", attachIo, conversationRouter);
+app.use("/messages", attachIo, messageRouter);
 // Connect to DB and start server
 connectDB(DATABASE_URL);
 server.listen(port, () => console.log(`Server running on port ${port}`));
