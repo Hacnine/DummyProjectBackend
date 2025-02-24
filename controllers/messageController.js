@@ -49,6 +49,51 @@ const sendMessage = async (req, res) => {
   }
 };
 
+// Handle Read Messages Event
+const markMessagesAsRead = async (conversationId, userId, io) => {
+  try {
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) return;
+
+    // Reset unread messages for this user
+    const unreadMessage = conversation.unread_messages.find(
+      (um) => um.user.toString() === userId
+    );
+    if (unreadMessage) {
+      unreadMessage.count = 0; // Reset unread count
+    }
+
+    await conversation.save();
+
+    // Notify all users in the conversation that messages are read
+    io.to(conversationId).emit("messagesRead", {
+      conversationId,
+      userId,
+    });
+  } catch (error) {
+    console.error("Error marking messages as read:", error);
+  }
+};
+
+// Socket.io Setup
+const setupSocket = (io) => {
+  io.on("connection", (socket) => {
+    console.log("User connected:", socket.id);
+
+    socket.on("joinConversation", (conversationId) => {
+      socket.join(conversationId);
+    });
+
+    socket.on("messageRead", async ({ conversationId, userId }) => {
+      await markMessagesAsRead(conversationId, userId, io);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("User disconnected:", socket.id);
+    });
+  });
+};
+
 
 const getMessages = async (req, res) => {
   const { conversationId } = req.params;
