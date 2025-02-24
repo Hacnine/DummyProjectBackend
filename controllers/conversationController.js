@@ -68,6 +68,7 @@ const getAllConversations = async (req, res) => {
             name: user.name,
             image: user.image || "images/default-avatar.svg",
           })),
+          unreadMessages: convo.unread_messages.find((um) => um.user.toString() === userId)?.count || 0,
         };
       }
     });
@@ -76,6 +77,42 @@ const getAllConversations = async (req, res) => {
   } catch (error) {
     console.error("Error fetching conversations:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+const getConversationById = async (req, res) => {
+  const { chatId } = req.params;
+
+  if (!chatId) {
+    return res.status(400).json({ message: "Invalid chat ID" });
+  }
+
+  try {
+    // Fetch conversation while populating participants' name and image
+    const conversation = await Conversation.findById(chatId)
+      .select("-themeIndex -updatedAt -createdAt -unread_messages -last_message")
+      .populate("participants", "name image") // Populate participants with name and image
+      .lean();
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    // Format the response to include necessary details
+    const formattedConversation = {
+      ...conversation,
+      participants: conversation.participants.map((user) => ({
+        _id: user._id,
+        name: user.name,
+        image: user.image || "images/default-avatar.svg", // Provide a default image if empty
+      })),
+    };
+
+    return res.json(formattedConversation);
+  } catch (error) {
+    console.error("Error fetching conversation info:", error);
+    return res.status(500).json({ message: "Failed to get conversation info" });
   }
 };
 
@@ -100,7 +137,7 @@ const updateMessageRequestStatus = async (req, res) => {
       return res.status(400).json({ message: `Message request is already ${status}` });
     }
     const statusTransitions = {
-      rejected: ["pending", "accepted"], // ✅ Allow moving directly to "accepted"
+      rejected: ["pending", "accepted"], //  Allow moving directly to "accepted"
       pending: ["accepted", "rejected"], 
       accepted: [], // No further transitions after "accepted"
     };
@@ -147,7 +184,4 @@ const updateMessageRequestStatus = async (req, res) => {
   }
 };
 
-
-
-
-export { createConversation, getAllConversations, updateMessageRequestStatus };
+export { createConversation, getAllConversations,getConversationById,  updateMessageRequestStatus };
