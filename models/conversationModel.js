@@ -31,7 +31,6 @@ const conversationSchema = new Schema(
         count: { type: Number, default: 0 },
       },
     ],
-    typing_users: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users currently typing
   },
   { timestamps: true }
 );
