@@ -1,7 +1,7 @@
-import Conversation from '../models/conversationModel.js';
-import Message from '../models/chatModel.js';
+import Conversation from "../models/conversationModel.js";
+import Message from "../models/chatModel.js";
 import { setConversationState } from "../utils/redisClient.js";
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const sendMessage = async (req, res) => {
   const { sender, receiver, text } = req.body;
@@ -44,8 +44,8 @@ const sendMessage = async (req, res) => {
 
     res.status(201).json(newMessage);
   } catch (error) {
-    console.error('Error sending message:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error sending message:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -94,32 +94,37 @@ const setupSocket = (io) => {
   });
 };
 
-
 const getMessages = async (req, res) => {
   const { conversationId } = req.params;
+  const { participant1, participant2 } = req.query;
 
-  // Validate conversationId
-  if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-    return res.status(400).json({ message: 'Invalid conversation ID' });
-  }
-
+  console.log(participant1, participant2);
   try {
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: 'Conversation not found' });
+    if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
+      // Fetch messages by conversationId
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      const messages = await Message.find({ conversation: conversationId });
+      return res.status(200).json(messages);
+    } else if (participant1 && participant2) {
+      // Fetch messages by participants
+      const messages = await Message.find({
+        $or: [
+          { sender: participant1, receiver: participant2 },
+          { sender: participant2, receiver: participant1 }
+        ]
+      });
+      return res.status(200).json(messages);
+    } else {
+      return res.status(400).json({ message: "Invalid request parameters" });
     }
-    const messages = await Message.find({ conversation: conversationId });
-    res.status(200).json(messages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error fetching messages:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
-
-
-
-
-
 
 export { sendMessage, getMessages };
 // req.io.to(receiver).emit("receiveMessage", newMessage);
