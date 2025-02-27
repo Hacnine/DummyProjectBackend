@@ -68,9 +68,7 @@ const getAllConversations = async (req, res) => {
             name: user.name,
             image: user.image || "images/default-avatar.svg",
           })),
-          unreadMessages:
-            convo.unread_messages.find((um) => um.user.toString() === userId)
-              ?.count || 0,
+          unreadMessages: 0,
         };
       }
     });
