@@ -96,25 +96,30 @@ const setupSocket = (io) => {
 
 const getMessages = async (req, res) => {
   const { conversationId } = req.params;
-  const { participant1, participant2 } = req.query;
+  const { userId, participant1, participant2 } = req.query;
 
-  console.log(participant1, participant2);
   try {
     if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
       // Fetch messages by conversationId
       const conversation = await Conversation.findById(conversationId);
-      if (!conversation) {
+      //  Check if `userId` is part of the conversation
+      const isParticipant = conversation.participants.some(
+        (participant) => participant._id.toString() === userId
+      );
+
+      if (!conversation || !isParticipant) {
         return res.status(404).json({ message: "Conversation not found" });
       }
       const messages = await Message.find({ conversation: conversationId });
+
       return res.status(200).json(messages);
     } else if (participant1 && participant2) {
       // Fetch messages by participants
       const messages = await Message.find({
         $or: [
           { sender: participant1, receiver: participant2 },
-          { sender: participant2, receiver: participant1 }
-        ]
+          { sender: participant2, receiver: participant1 },
+        ],
       });
       return res.status(200).json(messages);
     } else {

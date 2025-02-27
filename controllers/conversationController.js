@@ -68,7 +68,9 @@ const getAllConversations = async (req, res) => {
             name: user.name,
             image: user.image || "images/default-avatar.svg",
           })),
-          unreadMessages: convo.unread_messages.find((um) => um.user.toString() === userId)?.count || 0,
+          unreadMessages:
+            convo.unread_messages.find((um) => um.user.toString() === userId)
+              ?.count || 0,
         };
       }
     });
@@ -80,26 +82,35 @@ const getAllConversations = async (req, res) => {
   }
 };
 
-
 const getConversationById = async (req, res) => {
   const { chatId } = req.params;
+  const { userId } = req.query;
 
-  if (!chatId) {
-    return res.status(400).json({ message: "Invalid chat ID" });
+  //  Validate input parameters
+  if (!chatId || !userId) {
+    return res.status(400).json({ message:  "Invalid chat ID" });
   }
 
   try {
-    // Fetch conversation while populating participants' name and image
+    //  Fetch conversation and populate participants
     const conversation = await Conversation.findById(chatId)
       .select("-themeIndex -updatedAt -createdAt -unread_messages -last_message")
-      .populate("participants", "name image") // Populate participants with name and image
+      .populate("participants", "name image")
       .lean();
 
+    //  If conversation does not exist, return 404
     if (!conversation) {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Format the response to include necessary details
+    //  Check if `userId` is part of the conversation
+    const isParticipant = conversation.participants.some((participant) => participant._id.toString() === userId);
+    
+    if (!isParticipant) {
+      return res.status(403).json({ message: "Access denied: You are not a participant in this conversation" });
+    }
+
+    //  Format response
     const formattedConversation = {
       ...conversation,
       participants: conversation.participants.map((user) => ({
@@ -134,25 +145,25 @@ const updateMessageRequestStatus = async (req, res) => {
 
     // Prevent unnecessary updates
     if (conversation.status === status) {
-      return res.status(400).json({ message: `Message request is already ${status}` });
+      return res
+        .status(400)
+        .json({ message: `Message request is already ${status}` });
     }
     const statusTransitions = {
       rejected: ["pending", "accepted"], //  Allow moving directly to "accepted"
-      pending: ["accepted", "rejected"], 
+      pending: ["accepted", "rejected"],
       accepted: [], // No further transitions after "accepted"
     };
-    
+
     if (!statusTransitions[conversation.status]?.includes(status)) {
       return res.status(400).json({ message: "Invalid status transition" });
     }
-    
+
     // // Business logic: Ensure valid transitions
     // const statusTransitions = {
     //   rejected: ["pending"], // Can only move to "pending", not "accepted" directly
     //   pending: ["accepted", "rejected"], // Can move to "accepted" or "rejected"
     // };
-    
-   
 
     // if (!statusTransitions[conversation.status]?.includes(status)) {
     //   return res.status(400).json({ message: "Invalid status transition" });
@@ -177,11 +188,18 @@ const updateMessageRequestStatus = async (req, res) => {
       });
     });
 
-    res.status(200).json({ message: `Message request ${status}`, conversation });
+    res
+      .status(200)
+      .json({ message: `Message request ${status}`, conversation });
   } catch (error) {
     console.error("Error updating message request status:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-export { createConversation, getAllConversations,getConversationById,  updateMessageRequestStatus };
+export {
+  createConversation,
+  getAllConversations,
+  getConversationById,
+  updateMessageRequestStatus,
+};
