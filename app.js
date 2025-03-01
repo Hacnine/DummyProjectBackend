@@ -15,7 +15,7 @@ dotenv.config();
 
 // Initialize app
 const app = express();
-const port = process.env.PORT || "3000";
+const port = process.env.PORT || "3002";
 const DATABASE_URL = process.env.DATABASE_URL;
 const originUrl = process.env.ORIGIN_URL || 'http://localhost:3002'; 
 
