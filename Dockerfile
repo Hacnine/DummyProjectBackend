@@ -14,9 +14,6 @@ RUN npm ci --only=production
 # Copy application code.
 COPY . .
 
-# Copy environment variables file
-COPY .env ./
-
 # Expose the port the app runs on
 EXPOSE 3001
 
