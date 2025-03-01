@@ -7,11 +7,15 @@ WORKDIR /app
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install production dependencies.
+COPY package*.json ./
+RUN npm ci --only=production
 
-# Copy the rest of the application code
+# Copy application code.
 COPY . .
+
+# Copy environment variables file
+COPY .env ./
 
 # Expose the port the app runs on
 EXPOSE 3001
