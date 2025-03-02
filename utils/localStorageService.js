@@ -24,4 +24,3 @@ export const removeToken = (res) => {
   res.clearCookie('refresh_token');
 };
 
-export { storeToken, getToken, removeToken };
