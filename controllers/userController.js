@@ -6,7 +6,7 @@ import {
   getToken,
   removeToken,
 } from "../utils/localStorageService.js";
-import { redisClient } from "../utils/redisClient.js";
+// import { redisClient } from "../utils/redisClient.js";
 
 const register = async (req, res) => {
   try {
@@ -129,14 +129,14 @@ const getAllUsers = async (req, res) => {
 const getUserInfo = async (req, res) => {
   try {
     const { userId } = req.params;
-    const cacheKey = `user:${userId}`;
+    // const cacheKey = `user:${userId}`;
 
-    // Check if user data exists in Redis
-    const cachedUser = await redisClient.get(cacheKey);
-    if (cachedUser) {
-      // console.log("User found in cache:", cachedUser); // ✅ Debugging log
-      return res.json(JSON.parse(cachedUser)); // ✅ Ensure response is sent
-    }
+    // // Check if user data exists in Redis
+    // const cachedUser = await redisClient.get(cacheKey);
+    // if (cachedUser) {
+    //   // console.log("User found in cache:", cachedUser); // ✅ Debugging log
+    //   return res.json(JSON.parse(cachedUser)); // ✅ Ensure response is sent
+    // }
 
     // Fetch from MongoDB if not in cache
     const user = await userModel.findById(userId).select("-password").lean();
@@ -146,7 +146,7 @@ const getUserInfo = async (req, res) => {
     }
 
     // Store in Redis with 1-hour expiration
-    await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
+    // await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
     // console.log("User stored in cache:", user); // ✅ Debugging log
 
     return res.json(user); // ✅ Ensure response is sent
