@@ -1,18 +1,25 @@
-import jwt from 'jsonwebtoken';
+export const storeToken = (res, { access, refresh }) => {
+  res.cookie('access_token', access, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Set to true in production
+    sameSite: 'None',
+    maxAge: 15 * 60 * 1000, // 15 minutes
+  });
 
-const storeToken = (res, token) => {
-  const { access, refresh } = token;
-  res.cookie('access_token', access, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
-  res.cookie('refresh_token', refresh, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+  res.cookie('refresh_token', refresh, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Set to true in production
+    sameSite: 'None',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
 };
 
-const getToken = (req) => {
-  const access_token = req.cookies['access_token'];
-  const refresh_token = req.cookies['refresh_token'];
+export const getToken = (req) => {
+  const { access_token, refresh_token } = req.cookies;
   return { access_token, refresh_token };
 };
 
-const removeToken = (res) => {
+export const removeToken = (res) => {
   res.clearCookie('access_token');
   res.clearCookie('refresh_token');
 };
