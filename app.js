@@ -20,10 +20,24 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const originUrl = process.env.ORIGIN_URL || 'http://localhost:3002'; 
 
 // Middleware configurations
+const allowedOrigins = [
+  'http://localhost:3002', // Local development
+  process.env.ORIGIN_URL, // Production frontend domain
+];
+
 app.use(cors({
-  origin: originUrl, 
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
 }));
+
 app.use('/images', express.static('public/images'));
 app.use(express.json());
 app.use(cookieParser());
