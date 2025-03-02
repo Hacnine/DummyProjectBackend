@@ -32,9 +32,10 @@ app.use(cookieParser());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    origin: originUrl,  
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH" ],
+    origin: originUrl, 
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH" ],
+    allowedHeaders: ["Content-Type", "Authorization"],
   },
 });
 
