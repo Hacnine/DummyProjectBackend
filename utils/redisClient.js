@@ -9,7 +9,7 @@ const redisClient = createClient({
       }
       return Math.min(retries * 50, 500);
     },
-    connectTimeout: 10000  // Increase the connection timeout to 10 seconds
+    connectTimeout: 500000  // Increase the connection timeout to 10 seconds
   }
 });
 
