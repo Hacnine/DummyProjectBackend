@@ -13,9 +13,17 @@ import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
 import { redisClient } from './utils/redisClient.js'; 
-import { redisStore } from './utils/sessionStore.js';
+import { RedisStore } from "connect-redis";
 
 dotenv.config();
+
+
+// Initialize Redis Store first
+const redisStore = new RedisStore({
+  client: redisClient,
+  prefix: "session:",
+  disableTouch: true, // Prevents unnecessary session updates
+});
 
 // Initialize app
 const app = express();
@@ -31,9 +39,11 @@ app.use(cors({
 app.use('/images', express.static('public/images'));
 app.use(express.json());
 app.use(cookieParser());
+
+// Configure express-session AFTER cookieParser
 app.use(
   session({
-    store: redisStore,
+    store: redisStore, // Correctly configured Redis session store
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -45,6 +55,7 @@ app.use(
     },
   })
 );
+
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
