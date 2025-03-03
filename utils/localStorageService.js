@@ -1,4 +1,4 @@
-import { redisClient } from "./redisClient";
+import { redisClient } from './redisClient.js';
 
 export const storeToken = async (res, { access, refresh }) => {
   const accessTokenId = `access_${Date.now()}`;
