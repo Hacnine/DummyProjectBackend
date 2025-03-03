@@ -132,30 +132,30 @@ const getAllUsers = async (req, res) => {
 const getUserInfo = async (req, res) => {
   try {
     const { userId } = req.params;
-    // const cacheKey = `user:${userId}`;
+    const cacheKey = `user:${userId}`;
 
-    // // Check if user data exists in Redis
-    // const cachedUser = await redisClient.get(cacheKey);
-    // if (cachedUser) {
-    //   // console.log("User found in cache:", cachedUser); // ✅ Debugging log
-    //   return res.json(JSON.parse(cachedUser)); // ✅ Ensure response is sent
-    // }
+    // Check if user data exists in Redis
+    const cachedUser = await redisClient.get(cacheKey);
+    if (cachedUser) {
+      // console.log("User found in cache:", cachedUser); // Debugging log
+      return res.json(JSON.parse(cachedUser)); // Ensure response is sent
+    }
 
     // Fetch from MongoDB if not in cache
     const user = await userModel.findById(userId).select("-password").lean();
     if (!user) {
-      // console.log("User not found in DB"); // ✅ Debugging log
-      return res.status(404).json({ message: "User not found" }); // ✅ Send 404 response
+      // console.log("User not found in DB"); // Debugging log
+      return res.status(404).json({ message: "User not found" }); // Send 404 response
     }
 
     // Store in Redis with 1-hour expiration
-    // await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
-    // console.log("User stored in cache:", user); // ✅ Debugging log
+    await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
+    // console.log("User stored in cache:", user); // Debugging log
 
-    return res.json(user); // ✅ Ensure response is sent
+    return res.json(user); // Ensure response is sent
   } catch (error) {
     console.error("Error fetching user info:", error);
-    return res.status(500).json({ message: "Failed to get user info" }); // ✅ Return proper error response
+    return res.status(500).json({ message: "Failed to get user info" }); // Return proper error response
   }
 };
 
