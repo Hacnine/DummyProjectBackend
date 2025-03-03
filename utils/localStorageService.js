@@ -2,9 +2,6 @@ import { createClient } from '@redis/client';
 
 const redisClient = createClient({
   url: process.env.REDIS_URL,
-  socket: {
-    connectTimeout: 50000, // Increase the connection timeout to 5 seconds
-  },
 });
 redisClient.connect().catch(console.error);
 
@@ -26,7 +23,7 @@ export const storeToken = async (res, { access, refresh }) => {
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
-  res.cookie('refresh_token_id', refreshTokenId, {
+  res.cookie('refresh_token', refresh, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // Set to true in production
     sameSite: 'None',
@@ -34,17 +31,13 @@ export const storeToken = async (res, { access, refresh }) => {
   });
 };
 
-export const getToken = async (req) => {
-  const { access_token_id, refresh_token_id } = req.cookies;
-  const access_token = await redisClient.get(access_token_id);
-  const refresh_token = await redisClient.get(refresh_token_id);
+export const getToken = (req) => {
+  const { access_token, refresh_token } = req.cookies;
   return { access_token, refresh_token };
 };
 
-export const removeToken = async (res, req) => {
-  const { access_token_id, refresh_token_id } = req.cookies;
-  await redisClient.del(access_token_id);
-  await redisClient.del(refresh_token_id);
-  res.clearCookie('access_token_id');
-  res.clearCookie('refresh_token_id');
+export const removeToken = (res) => {
+  res.clearCookie('access_token');
+  res.clearCookie('refresh_token');
 };
+
