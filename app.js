@@ -12,8 +12,9 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import RedisStore from 'connect-redis';
 import { redisClient } from './utils/redisClient.js'; 
+import { redisStore } from './utils/sessionStore.js';
+
 dotenv.config();
 
 // Initialize app
@@ -30,21 +31,20 @@ app.use(cors({
 app.use('/images', express.static('public/images'));
 app.use(express.json());
 app.use(cookieParser());
-             
-// Use Redis for session storage
-app.use(session({
-  store: new RedisStore({ client: redisClient }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // Set to true in production
-    httpOnly: true,
-    sameSite: 'None',
-    maxAge: 24 * 60 * 60 * 1000, // 1 day
-  },
-}));
-
+app.use(
+  session({
+    store: redisStore,
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'None',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    },
+  })
+);
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
