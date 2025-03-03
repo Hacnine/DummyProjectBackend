@@ -6,7 +6,6 @@ import {
   getToken,
   removeToken,
 } from "../utils/localStorageService.js";
-// import { redisClient } from "../utils/redisClient.js";
 
 const register = async (req, res) => {
   try {
@@ -26,14 +25,14 @@ const register = async (req, res) => {
     const accessToken = jwt.sign(
       { id: user._id },
       process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "15m" }
     );
     const refreshToken = jwt.sign(
       { id: user._id },
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: "7d" }
     );
-    storeToken(res, { access: accessToken, refresh: refreshToken });
+    await storeToken(res, { access: accessToken, refresh: refreshToken });
 
     // Emit the loggedUsersUpdate event
     const getAllUsers = await userModel.find({});
@@ -62,14 +61,14 @@ const login = async (req, res) => {
       const accessToken = jwt.sign(
         { id: user._id },
         process.env.ACCESS_TOKEN_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "15m" }
       );
       const refreshToken = jwt.sign(
         { id: user._id },
         process.env.REFRESH_TOKEN_SECRET,
         { expiresIn: "7d" }
       );
-      storeToken(res, { access: accessToken, refresh: refreshToken });
+      await storeToken(res, { access: accessToken, refresh: refreshToken });
 
       // Emit the loggedUsersUpdate event
       req.io.emit("loggedUsersUpdate", Array.from(req.onlineUsers));
@@ -87,7 +86,7 @@ const login = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    removeToken(res);
+    await removeToken(res, req);
     res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
     res
@@ -126,10 +125,11 @@ const getAllUsers = async (req, res) => {
     res.status(500).json({ message: "Error fetching users" });
   }
 };
+
 const getUserInfo = async (req, res) => {
   try {
     const { userId } = req.params;
-    // const cacheKey = `user:${userId}`;
+   // const cacheKey = `user:${userId}`;
 
     // // Check if user data exists in Redis
     // const cachedUser = await redisClient.get(cacheKey);
@@ -142,7 +142,7 @@ const getUserInfo = async (req, res) => {
     const user = await userModel.findById(userId).select("-password").lean();
     if (!user) {
       // console.log("User not found in DB"); // ✅ Debugging log
-      return res.status(404).json({ message: "User not found" }); // ✅ Send 404 response
+      return res.status(404).json({ message: "User not found" });
     }
 
     // Store in Redis with 1-hour expiration
@@ -150,16 +150,17 @@ const getUserInfo = async (req, res) => {
     // console.log("User stored in cache:", user); // ✅ Debugging log
 
     return res.json(user); // ✅ Ensure response is sent
+    return res.json(user);
   } catch (error) {
     console.error("Error fetching user info:", error);
     return res.status(500).json({ message: "Failed to get user info" }); // ✅ Return proper error response
+    
   }
 };
 
-
 const refreshToken = async (req, res) => {
   try {
-    const { refresh_token } = getToken(req);
+    const { refresh_token } = await getToken(req);
     if (!refresh_token) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -169,7 +170,7 @@ const refreshToken = async (req, res) => {
       process.env.ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" }
     );
-    storeToken(res, { access: accessToken, refresh: refresh_token });
+    await storeToken(res, { access: accessToken, refresh: refresh_token });
     res.status(200).json({ accessToken });
   } catch (error) {
     if (error.name === "TokenExpiredError") {
