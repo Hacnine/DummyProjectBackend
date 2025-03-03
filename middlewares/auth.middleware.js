@@ -1,19 +1,19 @@
 import jwt from "jsonwebtoken";
-import { getToken } from "../utils/localStorageService.js";
+import { getToken, storeToken } from "../utils/localStorageService.js";
 
-const isLogin = (req, res, next) => {
+const isLogin = async (req, res, next) => {
   try {
-    const { access_token, refresh_token } = getToken(req);
+    const { access_token, refresh_token } = await getToken(req);
     if (access_token) {
       jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
           if (err.name === 'TokenExpiredError' && refresh_token) {
-            jwt.verify(refresh_token, process.env.REFRESH_TOKEN_SECRET, (refreshErr, refreshDecoded) => {
+            jwt.verify(refresh_token, process.env.REFRESH_TOKEN_SECRET, async (refreshErr, refreshDecoded) => {
               if (refreshErr) {
                 return res.status(401).json({ message: "Unauthorized: Invalid refresh token" });
               }
-              const newAccessToken = jwt.sign({ id: refreshDecoded.id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '7m' });
-              storeToken(res, { access: newAccessToken, refresh: refresh_token });
+              const newAccessToken = jwt.sign({ id: refreshDecoded.id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+              await storeToken(res, { access: newAccessToken, refresh: refresh_token });
               req.user = refreshDecoded;
               next();
             });
@@ -33,9 +33,9 @@ const isLogin = (req, res, next) => {
   }
 };
 
-const isLogout = (req, res, next) => {
+const isLogout = async (req, res, next) => {
   try {
-    const { access_token } = getToken(req);
+    const { access_token } = await getToken(req);
     if (!access_token) {
       next();
     } else {
