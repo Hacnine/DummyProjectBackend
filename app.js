@@ -12,7 +12,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import { redisStore } from './utils/sessionStore.js';
+import { redisStore } from './utils/sessionStore.js'; // Import custom RedisStore
 
 dotenv.config();
 
@@ -34,7 +34,7 @@ app.use(cookieParser());
 // Configure express-session AFTER cookieParser
 app.use(
   session({
-    store: redisStore, // Correctly configured Redis session store
+    store: redisStore, // Use custom Redis session store
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -46,7 +46,6 @@ app.use(
     },
   })
 );
-
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
