@@ -12,18 +12,9 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import { redisClient } from './utils/redisClient.js'; 
-import { RedisStore } from "connect-redis";
+import { redisStore } from './utils/sessionStore.js';
 
 dotenv.config();
-
-
-// Initialize Redis Store first
-const redisStore = new RedisStore({
-  client: redisClient,
-  prefix: "session:",
-  disableTouch: true, // Prevents unnecessary session updates
-});
 
 // Initialize app
 const app = express();
