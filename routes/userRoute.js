@@ -12,10 +12,24 @@ import {
   getUserInfo,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
+import session from "express-session";
 import dotenv from "dotenv";
 dotenv.config();
 
 const userRouter = express.Router();
+const { SESSION_SECRET } = process.env;
+userRouter.use(
+  session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 3600000,
+    },
+  })
+);
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
