@@ -1,4 +1,3 @@
-import session from 'express-session';
 import { redisClient } from './redisClient.js';
 import EventEmitter from 'events';
 

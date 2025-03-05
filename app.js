@@ -12,18 +12,9 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import { redisClient } from './utils/redisClient.js'; 
-import { RedisStore } from "connect-redis";
+import { redisStore } from './utils/redisStore.js'; // Import custom RedisStore
 
 dotenv.config();
-
-
-// Initialize Redis Store first
-const redisStore = new RedisStore({
-  client: redisClient,
-  prefix: "session:",
-  disableTouch: true, // Prevents unnecessary session updates
-});
 
 // Initialize app
 const app = express();
@@ -43,7 +34,7 @@ app.use(cookieParser());
 // Configure express-session AFTER cookieParser
 app.use(
   session({
-    store: redisStore, // Correctly configured Redis session store
+    store: redisStore, // Use custom Redis session store
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -55,7 +46,6 @@ app.use(
     },
   })
 );
-
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
@@ -176,4 +166,4 @@ app.use("/conversations", attachIo, conversationRouter);
 app.use("/messages", attachIo, messageRouter);
 // Connect to DB and start server
 connectDB(DATABASE_URL);
-server.listen(port, () => console.log(`Server running on port ${port}`));
+server.listen(port, () => console.log(`Server running on port ${port}`));n port ${port}`));

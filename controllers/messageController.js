@@ -1,6 +1,5 @@
 import Conversation from "../models/conversationModel.js";
 import Message from "../models/chatModel.js";
-// import { setConversationState } from "../utils/redisClient.js";
 import mongoose from "mongoose";
 
 const sendMessage = async (req, res) => {
