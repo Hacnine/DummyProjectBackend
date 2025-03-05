@@ -12,7 +12,8 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import { redisStore } from './utils/sessionStore.js';
+import { redisClient } from './utils/redisClient.js'; 
+import { RedisStore } from "connect-redis";
 
 dotenv.config();
 
