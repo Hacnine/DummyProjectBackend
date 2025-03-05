@@ -42,7 +42,7 @@ app.use(cookieParser());
 // Configure express-session AFTER cookieParser
 app.use(
   session({
-    store: redisStore, // Use custom Redis session store
+    store: redisStore, // Correctly configured Redis session store
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -54,6 +54,7 @@ app.use(
     },
   })
 );
+
 
 // Create HTTP server and set up Socket.IO with CORS and token-based authentication
 const server = http.createServer(app);
