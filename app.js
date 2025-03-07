@@ -12,26 +12,30 @@ import jwt from 'jsonwebtoken';
 import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
-import { redisSessinStore } from './utils/redisSessionStore.js'; // Import custom redisSessinStore
-import {RedisStore} from "connect-redis"
-import {createClient} from "redis"
+import { RedisStore } from "connect-redis";
+import { createClient } from "redis";
+
 dotenv.config();
 
-// Initialize client.
-let redisClient = createClient()
-redisClient.connect().catch(console.error)
+// Initialize Redis client.
+const redisClient = createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+});
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
-// Initialize store.
-let redisStore = new RedisStore({
+redisClient.connect().catch(console.error);
+
+// Initialize Redis store.
+const redisStore = new RedisStore({
   client: redisClient,
-  prefix: "myapp:",
-})
+  prefix: "alfajr:",
+});
 
 // Initialize app
 const app = express();
 const port = process.env.PORT || "3001";
 const DATABASE_URL = process.env.DATABASE_URL;
-const originUrl ='http://localhost:3002'; 
+const originUrl = process.env.ORIGIN_URL || 'http://localhost:3002'; 
 
 // Middleware configurations
 app.use(cors({
@@ -175,6 +179,13 @@ const attachIo = (req, res, next) => {
 app.use("/user", attachIo, userRouter);
 app.use("/conversations", attachIo, conversationRouter);
 app.use("/messages", attachIo, messageRouter);
+
 // Connect to DB and start server
-connectDB(DATABASE_URL);
-server.listen(port, () => console.log(`Server running on port ${port}`));
+connectDB(DATABASE_URL)
+  .then(() => {
+    server.listen(port, () => console.log(`Server running on port ${port}`));
+  })
+  .catch((err) => {
+    console.error("Failed to connect to the database:", err);
+    process.exit(1); // Exit the process with a failure code
+  });
