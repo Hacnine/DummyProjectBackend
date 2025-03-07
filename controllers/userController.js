@@ -5,7 +5,7 @@ import {
   storeToken,
   getToken,
   removeToken,
-} from "../utils/localStorageService.js";
+} from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
 
 const register = async (req, res) => {
@@ -22,18 +22,6 @@ const register = async (req, res) => {
 
     const user = new userModel({ name, email, password: passwordHash });
     await user.save();
-
-    const accessToken = jwt.sign(
-      { id: user._id },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "7d" }
-    );
-    const refreshToken = jwt.sign(
-      { id: user._id },
-      process.env.REFRESH_TOKEN_SECRET,
-      { expiresIn: "7d" }
-    );
-    storeToken(res, { access: accessToken, refresh: refreshToken });
 
     // Emit the loggedUsersUpdate event
     const getAllUsers = await userModel.find({});
@@ -69,7 +57,8 @@ const login = async (req, res) => {
         process.env.REFRESH_TOKEN_SECRET,
         { expiresIn: "7d" }
       );
-      storeToken(res, { access: accessToken, refresh: refreshToken });
+      const userId = user._id.toString()
+      await storeToken(res, { access: accessToken, refresh: refreshToken}, userId);
 
       // Emit the loggedUsersUpdate event
       req.io.emit("loggedUsersUpdate", Array.from(req.onlineUsers));
@@ -84,17 +73,16 @@ const login = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
-
 const logout = async (req, res) => {
   try {
-    removeToken(res);
+    await removeToken(res, req); // Ensure the function is called with both `res` and `req`
+    
     res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
 
 const deleteUser = async (req, res) => {
   try {
@@ -169,7 +157,8 @@ const refreshToken = async (req, res) => {
       process.env.ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" }
     );
-    storeToken(res, { access: accessToken, refresh: refresh_token });
+     const userId = decoded._id.toString()
+      await storeToken(res, { access: accessToken, refresh: refreshToken}, userId);
     res.status(200).json({ accessToken });
   } catch (error) {
     if (error.name === "TokenExpiredError") {

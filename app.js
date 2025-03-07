@@ -166,4 +166,4 @@ app.use("/conversations", attachIo, conversationRouter);
 app.use("/messages", attachIo, messageRouter);
 // Connect to DB and start server
 connectDB(DATABASE_URL);
-server.listen(port, () => console.log(`Server running on port ${port}`));n port ${port}`));
+server.listen(port, () => console.log(`Server running on port ${port}`));
