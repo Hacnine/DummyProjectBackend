@@ -13,7 +13,18 @@ import dotenv from "dotenv";
 import userModel from "./models/userModel.js";
 import session from 'express-session';
 import { redisSessinStore } from './utils/redisSessionStore.js'; // Import custom redisSessinStore
+import {RedisStore} from "connect-redis"
+import {createClient} from "redis"
 
+// Initialize client.
+let redisClient = createClient()
+redisClient.connect().catch(console.error)
+
+// Initialize store.
+let redisStore = new RedisStore({
+  client: redisClient,
+  prefix: "myapp:",
+})
 dotenv.config();
 
 // Initialize app
@@ -34,7 +45,7 @@ app.use(cookieParser());
 // Configure express-session AFTER cookieParser
 app.use(
   session({
-    store: redisSessinStore, // Use custom Redis session store
+    store: redisStore, // Use custom Redis session store
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
