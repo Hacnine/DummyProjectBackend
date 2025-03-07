@@ -25,10 +25,10 @@ redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
 redisClient.connect().catch(console.error);
 
-// Initialize Redis store.
+// Initialize Redis store for sessions.
 const redisStore = new RedisStore({
   client: redisClient,
-  prefix: "alfajr:",
+  prefix: "alfajr:", // Customize prefix for your application
 });
 
 // Initialize app
@@ -98,21 +98,28 @@ io.use((socket, next) => {
   });
 });
 
-// Online users tracking
-const onlineUsers = new Set();
-const userSocketMap = new Map(); // Stores userId -> socketId mapping
-const userDataCache = new Map(); // Store user details in memory
+// Set Redis keys
+const ONLINE_USERS_KEY = 'onlineUsers';
+const USER_SOCKET_MAP_KEY = 'userSocketMap';
+const USER_DATA_CACHE_KEY = 'userDataCache';
 
+// Online users tracking
 io.on("connection", async (socket) => {
   if (socket.user?.id) {
-    userSocketMap.set(socket.user.id, socket.id);
-    onlineUsers.add(socket.user.id);
+    const userId = socket.user.id;
+    const socketId = socket.id;
+
+    // Add user to online users set
+    await redisClient.sAdd(ONLINE_USERS_KEY, userId);
+
+    // Add user socket mapping
+    await redisClient.hSet(USER_SOCKET_MAP_KEY, userId, socketId);
 
     // Store user details in cache if not already stored
-    if (!userDataCache.has(socket.user.id)) {
-      const user = await userModel.findById(socket.user.id, "-password");
+    if (!(await redisClient.hExists(USER_DATA_CACHE_KEY, userId))) {
+      const user = await userModel.findById(userId, "-password");
       if (user) {
-        userDataCache.set(socket.user.id, user);
+        await redisClient.hSet(USER_DATA_CACHE_KEY, userId, JSON.stringify(user));
       }
     }
 
@@ -121,9 +128,9 @@ io.on("connection", async (socket) => {
 
   // Handle user-online event (optional)
   socket.on("userOnline", async (userId) => {
-    if (userId && !onlineUsers.has(userId)) {
-      onlineUsers.add(userId);
-      userSocketMap.set(userId, socket.id);
+    if (userId && !(await redisClient.sIsMember(ONLINE_USERS_KEY, userId))) {
+      await redisClient.sAdd(ONLINE_USERS_KEY, userId);
+      await redisClient.hSet(USER_SOCKET_MAP_KEY, userId, socket.id);
       await sendOnlineUsersList();
     }
   });
@@ -138,41 +145,50 @@ io.on("connection", async (socket) => {
   });
 
   // Handle sendMessage event
-  socket.on("sendMessage", (message) => {
-    const receiverSocketId = userSocketMap.get(message.receiver);
+  socket.on("sendMessage", async (message) => {
+    const receiverSocketId = await redisClient.hGet(USER_SOCKET_MAP_KEY, message.receiver);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit('receiveMessage', message);
     }
   });
 
   socket.on("disconnect", async () => {
-    userSocketMap.delete(socket.user?.id);
-    onlineUsers.delete(socket.user?.id);
-    await sendOnlineUsersList();
+    const userId = socket.user?.id;
+    if (userId) {
+      await redisClient.sRem(ONLINE_USERS_KEY, userId);
+      await redisClient.hDel(USER_SOCKET_MAP_KEY, userId);
+      await sendOnlineUsersList();
+    }
   });
 });
 
 // Function to send updated online users list to each user individually
 const sendOnlineUsersList = async () => {
-  const loggedUsers = Array.from(onlineUsers)
-    .map((userId) => userDataCache.get(userId))
-    .filter((user) => user); // Remove undefined users
+  const onlineUserIds = await redisClient.sMembers(ONLINE_USERS_KEY);
+  const loggedUsers = [];
 
-  onlineUsers.forEach((userId) => {
-    const socketId = userSocketMap.get(userId);
+  for (const userId of onlineUserIds) {
+    const userData = await redisClient.hGet(USER_DATA_CACHE_KEY, userId);
+    if (userData) {
+      loggedUsers.push(JSON.parse(userData));
+    }
+  }
+
+  for (const userId of onlineUserIds) {
+    const socketId = await redisClient.hGet(USER_SOCKET_MAP_KEY, userId);
     if (socketId) {
       io.to(socketId).emit(
         "loggedUsersUpdate",
         loggedUsers.filter((user) => user && user._id.toString() !== userId) // Exclude self
       );
     }
-  });
+  }
 };
 
 // Attach io instance to req for routes
 const attachIo = (req, res, next) => {
   req.io = io;
-  req.onlineUsers = onlineUsers;
+  req.onlineUsers = redisClient.sMembers(ONLINE_USERS_KEY);
   next();
 };
 
