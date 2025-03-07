@@ -15,6 +15,7 @@ import session from 'express-session';
 import { redisSessinStore } from './utils/redisSessionStore.js'; // Import custom redisSessinStore
 import {RedisStore} from "connect-redis"
 import {createClient} from "redis"
+dotenv.config();
 
 // Initialize client.
 let redisClient = createClient()
@@ -25,7 +26,6 @@ let redisStore = new RedisStore({
   client: redisClient,
   prefix: "myapp:",
 })
-dotenv.config();
 
 // Initialize app
 const app = express();
