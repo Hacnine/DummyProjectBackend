@@ -11,14 +11,6 @@ import {
   getUserInfo,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
-import rateLimit from "express-rate-limit";
-
-// Rate Limiting Middleware
-const generalLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 100, // Limit each IP to 100 requests
-  message: "Too many requests, please try again later.",
-});
 
 // Initialize express router
 const userRouter = express.Router();
@@ -43,7 +35,7 @@ const upload = multer({ storage: storage });
 
 userRouter.get("/refresh-token", refreshToken);
 userRouter.post("/register", upload.single("image"), register);
-userRouter.post("/login", generalLimiter, isLogout, login);
+userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
 userRouter.get("/allusers", isLogin, getAllUsers);
