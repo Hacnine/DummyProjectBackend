@@ -36,5 +36,5 @@ class RedisStore extends EventEmitter {
   }
 }
 
-const redisStore = new RedisStore();
-export { redisStore };
+const redisSessinStore = new RedisStore();
+export { redisSessinStore };
