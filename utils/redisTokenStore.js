@@ -29,8 +29,6 @@ const getToken = async (req) => {
     const storedAccess = await redisClient.get(`access_token_${userId}`);
     const storedRefresh = await redisClient.get(`refresh_token_${userId}`);
 
-    console.log("Tokens from Redis:", storedAccess, storedRefresh);
-
     return { access_token: storedAccess, refresh_token: storedRefresh };
   } catch (error) {
     console.error("Token Decode Error:", error.message);
