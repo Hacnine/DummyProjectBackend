@@ -1,17 +1,13 @@
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import {
-  storeToken,
-  getToken,
-  removeToken,
-} from "../utils/redisTokenStore.js";
+import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
 
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
+    const { name, email, password, gender } = req.body;
+    if (!name || !email || !password || !gender) {
       return res.status(400).json({ message: "All fields are required." });
     }
     const existingUser = await userModel.findOne({ email });
@@ -19,17 +15,44 @@ const register = async (req, res) => {
       return res.status(400).json({ message: "User already exists." });
     }
     const passwordHash = await bcrypt.hash(password, 10);
+    let image = "";
+    if (gender.trim() === "male") {
+      console.log("gender:", gender.trim());
 
-    const user = new userModel({ name, email, password: passwordHash });
+      image = "/images/avatar/default-avatar.svg";
+    } else if (gender.trim() === "female") {
+      image = "/images/avatar/womanav10.svg";
+    } else {
+      image = "/images/avatar/default-avatar.svg";
+    }
+
+    const user = new userModel({
+      name,
+      email,
+      password: passwordHash,
+      gender,
+      image,
+    });
     await user.save();
+
+    const accessToken = jwt.sign(
+      { id: user._id },
+      process.env.ACCESS_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
+    const userId = user._id;
+    storeToken(res, { access: accessToken, refresh: refreshToken }, userId);
 
     // Emit the loggedUsersUpdate event
     const getAllUsers = await userModel.find({});
     req.io.emit("getAllUsersUpdate", getAllUsers);
 
-    res
-      .status(201)
-      .json({ message: "User registered successfully", user, accessToken });
+    res.status(201).json({ message: "User registered successfully", user });
   } catch (error) {
     res
       .status(500)
@@ -47,6 +70,18 @@ const login = async (req, res) => {
     }
     const user = await userModel.findOne({ email });
     if (user && (await bcrypt.compare(password, user.password))) {
+     
+       // Clear previous cookies
+       res.clearCookie("access_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
+       res.clearCookie("refresh_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
+ 
+       // Remove old tokens from Redis
+       await redisClient.del(`access_token_${user._id}`);
+       await redisClient.del(`refresh_token_${user._id}`);
+ 
+       // Generate new tokens
+       
+
       const accessToken = jwt.sign(
         { id: user._id },
         process.env.ACCESS_TOKEN_SECRET,
@@ -57,8 +92,12 @@ const login = async (req, res) => {
         process.env.REFRESH_TOKEN_SECRET,
         { expiresIn: "7d" }
       );
-      const userId = user._id.toString()
-      await storeToken(res, { access: accessToken, refresh: refreshToken}, userId);
+      const userId = user._id.toString();
+      await storeToken(
+        res,
+        { access: accessToken, refresh: refreshToken },
+        userId
+      );
 
       // Emit the loggedUsersUpdate event
       req.io.emit("loggedUsersUpdate", Array.from(req.onlineUsers));
@@ -76,13 +115,14 @@ const login = async (req, res) => {
 const logout = async (req, res) => {
   try {
     await removeToken(res, req); // Ensure the function is called with both `res` and `req`
-    
+
     res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 const deleteUser = async (req, res) => {
   try {
@@ -144,7 +184,6 @@ const getUserInfo = async (req, res) => {
   }
 };
 
-
 const refreshToken = async (req, res) => {
   try {
     const { refresh_token } = getToken(req);
@@ -157,8 +196,12 @@ const refreshToken = async (req, res) => {
       process.env.ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" }
     );
-     const userId = decoded._id.toString()
-      await storeToken(res, { access: accessToken, refresh: refreshToken}, userId);
+    const userId = decoded._id.toString();
+    await storeToken(
+      res,
+      { access: accessToken, refresh: refreshToken },
+      userId
+    );
     res.status(200).json({ accessToken });
   } catch (error) {
     if (error.name === "TokenExpiredError") {

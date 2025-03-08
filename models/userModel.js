@@ -6,7 +6,8 @@ const userSchema = new Schema(
     name: { type: String, required: true, trim: true, unique: true },
     email: { type: String, required: true, trim: true, unique: true },
     password: { type: String, required: true, trim: true },
-    image: { type: String, trim: true }, // Profile Picture
+    gender:{ type: String, required: true, },
+    image: { type: String, required: false, trim: true}, // Profile Picture
     cover_image: { type: String, trim: true }, // Cover Photo
     bio: { type: String, trim: true, maxlength: 150 }, // Short bio
     

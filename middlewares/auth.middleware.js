@@ -48,7 +48,10 @@ const isLogin = async (req, res, next) => {
 const isLogout = async (req, res, next) => {
   try {
     const { access_token } = await getToken(req);
-
+      // Clear previous cookies
+      res.clearCookie("access_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
+      res.clearCookie("refresh_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
+      
     if (!access_token) {
       return next();
     }
