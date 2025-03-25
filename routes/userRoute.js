@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
+import { body } from "express-validator";
 import {
   register,
   login,
@@ -9,6 +10,7 @@ import {
   getAllUsers,
   refreshToken,
   getUserInfo,
+  updateUserInfo,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import rateLimit from "express-rate-limit";
@@ -47,6 +49,15 @@ userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
 
 userRouter.get("/allusers", isLogin, getAllUsers);
+userRouter.patch("/update/:userId", isLogin,
+  // [
+  //   body('name').optional().isString().trim().escape(),
+  //   body('email').optional().isEmail().normalizeEmail(),
+  //   body('password').optional().isLength({ min: 1 }).trim().escape(),
+  //   body('gender').optional().isIn(['male', 'female', 'other']).trim().escape(),
+  //   body('image').optional().isURL().trim(),
+  // ],
+  updateUserInfo);
 userRouter.get("/userinfo/:userId", isLogin, getUserInfo);
 
 export default userRouter;

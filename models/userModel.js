@@ -10,7 +10,11 @@ const userSchema = new Schema(
     image: { type: String, required: false, trim: true}, // Profile Picture
     cover_image: { type: String, trim: true }, // Cover Photo
     bio: { type: String, trim: true, maxlength: 150 }, // Short bio
-    
+    role: { 
+      type: String, 
+      enum: ["user", "admin", "superadmin", "moderator"], 
+      default: "user" 
+    },
     friends: [{ type: Schema.Types.ObjectId, ref: "User" }], // Friend list
     blocked_users: [{ type: Schema.Types.ObjectId, ref: "User" }], // Blocked users
     friend_requests: [{ type: Schema.Types.ObjectId, ref: "User" }], // Pending friend requests 

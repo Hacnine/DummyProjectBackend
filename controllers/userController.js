@@ -3,6 +3,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
+import { validationResult } from 'express-validator';
+import { fileURLToPath } from "url";
+import path from "path";
 
 const register = async (req, res) => {
   try {
@@ -15,23 +18,23 @@ const register = async (req, res) => {
       return res.status(400).json({ message: "User already exists." });
     }
     const passwordHash = await bcrypt.hash(password, 10);
-    let image = "";
-    if (gender.trim() === "male") {
-      console.log("gender:", gender.trim());
+    // let image = "";
+    // if (gender.trim() === "male") {
+    //   console.log("gender:", gender.trim());
 
-      image = "/images/avatar/default-avatar.svg";
-    } else if (gender.trim() === "female") {
-      image = "/images/avatar/womanav10.svg";
-    } else {
-      image = "/images/avatar/default-avatar.svg";
-    }
+    //   image = "/images/avatar/default-avatar.svg";
+    // } else if (gender.trim() === "female") {
+    //   image = "/images/avatar/womanav10.svg";
+    // } else {
+    //   image = "/images/avatar/default-avatar.svg";
+    // }
 
     const user = new userModel({
       name,
       email,
       password: passwordHash,
       gender,
-      image,
+      // image,
     });
     await user.save();
 
@@ -154,6 +157,7 @@ const getAllUsers = async (req, res) => {
     res.status(500).json({ message: "Error fetching users" });
   }
 };
+
 const getUserInfo = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -162,25 +166,58 @@ const getUserInfo = async (req, res) => {
     // Check if user data exists in Redis
     const cachedUser = await redisClient.get(cacheKey);
     if (cachedUser) {
-      // console.log("User found in cache:", cachedUser); // ✅ Debugging log
-      return res.json(JSON.parse(cachedUser)); // ✅ Ensure response is sent
+      // console.log("User found in cache:", cachedUser); //  Debugging log
+      return res.json(JSON.parse(cachedUser)); //  Ensure response is sent
     }
 
     // Fetch from MongoDB if not in cache
     const user = await userModel.findById(userId).select("-password").lean();
     if (!user) {
-      // console.log("User not found in DB"); // ✅ Debugging log
-      return res.status(404).json({ message: "User not found" }); // ✅ Send 404 response
+      // console.log("User not found in DB"); //  Debugging log
+      return res.status(404).json({ message: "User not found" }); //  Send 404 response
     }
 
     // Store in Redis with 1-hour expiration
     await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
-    // console.log("User stored in cache:", user); // ✅ Debugging log
+    // console.log("User stored in cache:", user); //  Debugging log
 
-    return res.json(user); // ✅ Ensure response is sent
+    return res.json(user); //  Ensure response is sent
   } catch (error) {
     console.error("Error fetching user info:", error);
-    return res.status(500).json({ message: "Failed to get user info" }); // ✅ Return proper error response
+    return res.status(500).json({ message: "Failed to get user info" }); //  Return proper error response
+  }
+};
+
+
+const updateUserInfo = async (req, res) => {
+  const { userId } = req.params;
+  const updateData = req.body;
+ // Decode the URL if it contains HTML entities
+//  console.log(updateData.image)
+ if (updateData.image) {
+  updateData.image = decodeURIComponent(updateData.image);
+}
+
+// Validate and sanitize input
+const errors = validationResult(req);
+if (!errors.isEmpty()) {
+  return res.status(400).json({ errors: errors.array() });
+}
+
+try {
+  const updatedUser = await userModel.findByIdAndUpdate(
+    userId,
+    { $set: updateData },
+    { new: true, runValidators: true }
+  );
+
+  if (!updatedUser) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating user information', error: error.message });
   }
 };
 
@@ -216,4 +253,4 @@ const refreshToken = async (req, res) => {
   }
 };
 
-export { register, login, logout, getAllUsers, getUserInfo, refreshToken };
+export { register, login, logout, getAllUsers, getUserInfo, updateUserInfo, refreshToken };
