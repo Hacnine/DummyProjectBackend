@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { getToken, storeToken } from "../utils/redisTokenStore.js";
+import User from "../models/userModel.js";
 
 const isLogin = async (req, res, next) => {
   try {
@@ -35,7 +36,10 @@ const isLogin = async (req, res, next) => {
           return res.status(401).json({ message: "Unauthorized: Invalid token" });
         }
       } else {
-        req.user = decoded;
+        const user = await User.findById(decoded.id).select("-password -device_tokens -two_factor_auth.secret"); // Exclude sensitive fields
+        if (!user) return res.status(404).json({ message: "User not found" });
+  
+        req.user = user; // Attach full user data to request
         next();
       }
     });

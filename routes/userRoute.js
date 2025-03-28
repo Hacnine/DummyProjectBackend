@@ -47,17 +47,23 @@ userRouter.get("/refresh-token", refreshToken);
 userRouter.post("/register", upload.single("image"), register);
 userRouter.post("/login", isLogout, login);
 userRouter.get("/logout", isLogin, logout);
+userRouter.get("/me", isLogin, (req, res) => {
+  res.json({ user: req.user });
+});
 
 userRouter.get("/allusers", isLogin, getAllUsers);
-userRouter.patch("/update/:userId", isLogin,
-  // [
-  //   body('name').optional().isString().trim().escape(),
-  //   body('email').optional().isEmail().normalizeEmail(),
-  //   body('password').optional().isLength({ min: 1 }).trim().escape(),
-  //   body('gender').optional().isIn(['male', 'female', 'other']).trim().escape(),
-  //   body('image').optional().isURL().trim(),
-  // ],
-  updateUserInfo);
+userRouter.patch(
+  "/update/:userId",
+  isLogin,
+  [
+    body("name").optional().isString().trim().escape(),
+    body("email").optional().isEmail().normalizeEmail(),
+    body("password").optional().isLength({ min: 1 }).trim().escape(),
+    body("gender").optional().isIn(["male", "female", "other"]).trim().escape(),
+    body("image").optional().trim(),
+  ],
+  updateUserInfo
+);
 userRouter.get("/userinfo/:userId", isLogin, getUserInfo);
 
 export default userRouter;

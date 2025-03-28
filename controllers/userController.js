@@ -166,7 +166,6 @@ const getUserInfo = async (req, res) => {
     // Check if user data exists in Redis
     const cachedUser = await redisClient.get(cacheKey);
     if (cachedUser) {
-      // console.log("User found in cache:", cachedUser); //  Debugging log
       return res.json(JSON.parse(cachedUser)); //  Ensure response is sent
     }
 
@@ -193,7 +192,7 @@ const updateUserInfo = async (req, res) => {
   const { userId } = req.params;
   const updateData = req.body;
  // Decode the URL if it contains HTML entities
-//  console.log(updateData.image)
+ console.log(updateData.image)
  if (updateData.image) {
   updateData.image = decodeURIComponent(updateData.image);
 }
