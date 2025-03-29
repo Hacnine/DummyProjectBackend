@@ -188,37 +188,54 @@ const getUserInfo = async (req, res) => {
 };
 
 
+
 const updateUserInfo = async (req, res) => {
   const { userId } = req.params;
-  const updateData = req.body;
- // Decode the URL if it contains HTML entities
- console.log(updateData.image)
- if (updateData.image) {
-  updateData.image = decodeURIComponent(updateData.image);
-}
+  let updateData = req.body;
 
-// Validate and sanitize input
-const errors = validationResult(req);
-if (!errors.isEmpty()) {
-  return res.status(400).json({ errors: errors.array() });
-}
+  console.log("Received Data:", updateData); // Debugging log
 
-try {
-  const updatedUser = await userModel.findByIdAndUpdate(
-    userId,
-    { $set: updateData },
-    { new: true, runValidators: true }
-  );
-
-  if (!updatedUser) {
-    return res.status(404).json({ message: 'User not found' });
+  // Fix how image URLs are handled
+  if (typeof updateData.image === "string" && updateData.image.trim() !== "") {
+    updateData.image = decodeURIComponent(updateData.image);
   }
 
-  res.json(updatedUser);
+  // Validate and sanitize input
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    //  Get User Schema Fields Dynamically
+    const allowedFields = Object.keys(userModel.schema.paths);
+    updateData = Object.keys(updateData).reduce((filteredData, key) => {
+      if (allowedFields.includes(key)) {
+        filteredData[key] = updateData[key];
+      }
+      return filteredData;
+    }, {});
+
+    console.log("Filtered Update Data:", updateData); // Debugging log
+
+    //  Update Only Allowed Fields
+    const updatedUser = await userModel.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(updatedUser);
   } catch (error) {
-    res.status(500).json({ message: 'Error updating user information', error: error.message });
+    res.status(500).json({ message: "Error updating user information", error: error.message });
   }
 };
+
+
 
 const refreshToken = async (req, res) => {
   try {

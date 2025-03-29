@@ -45,6 +45,7 @@ app.use(cors({
 app.use('/images', express.static('public/images'));
 app.use(express.json());
 app.use(cookieParser());
+app.use(express.urlencoded({ extended: true })); 
 
 // Configure express-session AFTER cookieParser
 app.use(
