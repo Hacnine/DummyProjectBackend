@@ -195,6 +195,25 @@ const updateMessageRequestStatus = async (req, res) => {
   }
 };
 
+
+export const updateConversationThemeIndex = async (req, res) => {
+  try {
+    const { themeIndex } = req.body;
+    const { id } = req.params;
+
+    const conversation = await Conversation.findByIdAndUpdate(
+      id,
+      { themeIndex },
+      { new: true }
+    );
+    if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+    res.json({ message: "Theme index updated", themeIndex: conversation.themeIndex });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
 export {
   createConversation,
   getAllConversations,

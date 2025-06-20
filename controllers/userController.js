@@ -3,9 +3,10 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
-import { validationResult } from 'express-validator';
+import { validationResult } from "express-validator";
 import { fileURLToPath } from "url";
 import path from "path";
+import User from "../models/userModel.js";
 
 const register = async (req, res) => {
   try {
@@ -73,17 +74,23 @@ const login = async (req, res) => {
     }
     const user = await userModel.findOne({ email });
     if (user && (await bcrypt.compare(password, user.password))) {
-     
-       // Clear previous cookies
-       res.clearCookie("access_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
-       res.clearCookie("refresh_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "None" });
- 
-       // Remove old tokens from Redis
-       await redisClient.del(`access_token_${user._id}`);
-       await redisClient.del(`refresh_token_${user._id}`);
- 
-       // Generate new tokens
-       
+      // Clear previous cookies
+      res.clearCookie("access_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "None",
+      });
+      res.clearCookie("refresh_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "None",
+      });
+
+      // Remove old tokens from Redis
+      await redisClient.del(`access_token_${user._id}`);
+      await redisClient.del(`refresh_token_${user._id}`);
+
+      // Generate new tokens
 
       const accessToken = jwt.sign(
         { id: user._id },
@@ -187,8 +194,6 @@ const getUserInfo = async (req, res) => {
   }
 };
 
-
-
 const updateUserInfo = async (req, res) => {
   const { userId } = req.params;
   let updateData = req.body;
@@ -231,11 +236,27 @@ const updateUserInfo = async (req, res) => {
 
     res.json(updatedUser);
   } catch (error) {
-    res.status(500).json({ message: "Error updating user information", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error updating user information",
+        error: error.message,
+      });
   }
 };
 
 
+
+export const getUserThemeIndex = async (req, res) => {
+  try {
+    const userId = req.user._id; // assuming you use auth middleware
+    const user = await User.findById(userId).select("themeIndex");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ themeIndex: user.themeIndex });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 const refreshToken = async (req, res) => {
   try {
@@ -269,4 +290,29 @@ const refreshToken = async (req, res) => {
   }
 };
 
-export { register, login, logout, getAllUsers, getUserInfo, updateUserInfo, refreshToken };
+
+export const updateUserThemeIndex = async (req, res) => {
+  try {
+    const { themeIndex } = req.body;
+    const userId = req.user._id; 
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { themeIndex },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Theme index updated", themeIndex: user.themeIndex });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export {
+  register,
+  login,
+  logout,
+  getAllUsers,
+  getUserInfo,
+  updateUserInfo,
+  refreshToken,
+};

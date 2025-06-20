@@ -11,6 +11,8 @@ import {
   refreshToken,
   getUserInfo,
   updateUserInfo,
+  updateUserThemeIndex,
+  getUserThemeIndex,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import rateLimit from "express-rate-limit";
@@ -65,5 +67,9 @@ userRouter.patch(
   updateUserInfo
 );
 userRouter.get("/userinfo/:userId", isLogin, getUserInfo);
+userRouter.get("/theme-index", isLogin, getUserThemeIndex);
+userRouter.patch("/theme-index", isLogin, updateUserThemeIndex);
+
+
 
 export default userRouter;

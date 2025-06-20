@@ -3,6 +3,10 @@ import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
 import conversationRouter from './routes/conversationRoute.js';
 import messageRouter from './routes/messageRoute.js';
+import quickMessageRouter from './routes/quickMessageRoute.js';
+import quickLessonRouter from './routes/quickLessonRoute.js';
+import adminRouter from './routes/adminRoutes.js';
+import adminUserRouter from './routes/adminUserRoutes.js';
 import connectDB from "./db/connectdb.js";
 import cookie from "cookie";
 import cors from "cors";
@@ -196,6 +200,10 @@ const attachIo = (req, res, next) => {
 app.use("/user", attachIo, userRouter);
 app.use("/conversations", attachIo, conversationRouter);
 app.use("/messages", attachIo, messageRouter);
+app.use("/quick-messages", attachIo, quickMessageRouter);
+app.use("/quick-lessons",attachIo, quickLessonRouter);
+app.use("/admin", attachIo, adminRouter);
+app.use("/admin/user-management", attachIo, adminUserRouter);
 
 // Connect to DB and start server
 connectDB(DATABASE_URL)

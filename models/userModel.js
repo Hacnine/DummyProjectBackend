@@ -12,7 +12,7 @@ const userSchema = new Schema(
     bio: { type: String, trim: true, maxlength: 150 }, // Short bio
     role: { 
       type: String, 
-      enum: ["user", "admin", "superadmin", "moderator"], 
+      enum: ["user", "admin", "superadmin", "moderator", "teacher"], 
       default: "user" 
     },
     friends: [{ type: Schema.Types.ObjectId, ref: "User" }], // Friend list
