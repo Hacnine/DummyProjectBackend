@@ -13,11 +13,32 @@ const conversationSchema = new Schema(
       enum: ["pending", "accepted", "rejected"],
       default: "pending",
     },
+    visibility: {
+      type: String,
+      enum: ["public", "private"],
+      default: "private",
+      required: true,
+    },
     group: {
       is_group: { type: Boolean, default: false },
+      type: {
+        type: String,
+        enum: ["group", "classroom"],
+        default: "group",
+      },
       name: { type: String },
       image: { type: String }, // Group profile picture
       admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
+
+      // ✅ Extended fields for classroom functionality
+      classType: {
+        type: String,
+        enum: ["regular", "exam"],
+        default: "regular",
+      },
+      fileSendingAllowed: { type: Boolean, default: true },
+      moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
+      members: [{ type: Schema.Types.ObjectId, ref: "User" }],
     },
     themeIndex: { type: Number, default: 6, required: false },
     last_message: {
@@ -34,6 +55,11 @@ const conversationSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// Add indexes for common queries
+conversationSchema.index({ participants: 1 });
+conversationSchema.index({ visibility: 1 });
+conversationSchema.index({ "group.type": 1 });
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 export default Conversation;

@@ -18,14 +18,6 @@ import userModel from "./models/userModel.js";
 import session from 'express-session';
 import { RedisStore } from "connect-redis";
 import { createClient } from "redis";
-// import apiRouter from "./routes/index.js";
-import classRoutes from './routes/classRoutes.js';
-import assignmentRoutes from './routes/assignmentRoutes.js';
-import attendanceRoutes from './routes/attendanceRoutes.js';
-import alertnessRoutes from './routes/alertnessRoutes.js';
-import notificationRoutes from './routes/notificationRoutes.js';
-import fileRoutes from './routes/fileRoutes.js';
-
 
 dotenv.config();
 
@@ -209,18 +201,9 @@ app.use("/user", attachIo, userRouter);
 app.use("/conversations", attachIo, conversationRouter);
 app.use("/messages", attachIo, messageRouter);
 app.use("/quick-messages", attachIo, quickMessageRouter);
-app.use("/quick-lessons",quickLessonRouter);
-app.use("/admin", adminRouter);
-app.use("/admin/user-management", adminUserRouter);
-
-
-app.use("/class-group/classes",  classRoutes);
-app.use("/class-group/assignments", assignmentRoutes);
-app.use("/class-group/attendance", attendanceRoutes);
-app.use("/class-group/alertness",  alertnessRoutes);
-app.use("/class-group/notification", notificationRoutes);
-app.use("/class-group/flies", fileRoutes);
-// ...existing code...
+app.use("/quick-lessons",attachIo, quickLessonRouter);
+app.use("/admin", attachIo, adminRouter);
+app.use("/admin/user-management", attachIo, adminUserRouter);
 
 // Connect to DB and start server
 connectDB(DATABASE_URL)
