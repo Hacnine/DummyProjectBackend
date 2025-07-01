@@ -22,7 +22,6 @@ import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import { initSocketServer } from "./sockets/index.js";
-import { ONLINE_USERS_KEY } from "./sockets/onlineUserUtils.js";
 
 dotenv.config();
 
@@ -83,7 +82,6 @@ const io = initSocketServer(server, redisClient);
 // Attach io instance to req for routes
 const attachIo = (req, res, next) => {
   req.io = io;
-  req.onlineUsers = redisClient.sMembers(ONLINE_USERS_KEY);
   next();
 };
 

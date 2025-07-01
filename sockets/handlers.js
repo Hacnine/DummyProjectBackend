@@ -1,23 +1,23 @@
-import { addOnlineUser, removeOnlineUser, sendOnlineUsersList } from './onlineUserUtils.js';
+import { addOnlineUser, removeOnlineUser, sendOnlineUsersList, onlineUsers } from './onlineUserSocket.js';
 import userModel from "../models/userModel.js";
 import registerAlertnessHandlers from "./alertnessSocket.js";
 
-export const registerSocketEvents = (io, socket, redisClient) => {
+export const registerSocketEvents = (io, socket) => {
   const userId = socket.user?.id;
   const socketId = socket.id;
 
   if (userId) {
-    addOnlineUser(redisClient, userId, socketId, userModel).then(() => {
-      sendOnlineUsersList(io, redisClient);
+    addOnlineUser(userId, socketId, userModel).then(() => {
+      sendOnlineUsersList(io);
     });
   }
 
   registerAlertnessHandlers(io, socket);
 
   socket.on("userOnline", async (id) => {
-    if (id && !(await redisClient.sIsMember("onlineUsers", id))) {
-      await addOnlineUser(redisClient, id, socket.id, userModel);
-      await sendOnlineUsersList(io, redisClient);
+    if (id && !onlineUsers.has(id)) {
+      await addOnlineUser(id, socket.id, userModel);
+      sendOnlineUsersList(io);
     }
   });
 
@@ -29,17 +29,17 @@ export const registerSocketEvents = (io, socket, redisClient) => {
     io.to(conversationId).emit("typing", { userId, isTyping });
   });
 
-  socket.on("sendMessage", async (message) => {
-    const receiverSocketId = await redisClient.hGet("userSocketMap", message.receiver);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("receiveMessage", message);
+  socket.on("sendMessage", (message) => {
+    const receiver = onlineUsers.get(message.receiver);
+    if (receiver) {
+      io.to(receiver.socketId).emit("receiveMessage", message);
     }
   });
 
-  socket.on("disconnect", async () => {
+  socket.on("disconnect", () => {
     if (userId) {
-      await removeOnlineUser(redisClient, userId);
-      await sendOnlineUsersList(io, redisClient);
+      removeOnlineUser(userId);
+      sendOnlineUsersList(io);
     }
   });
 };

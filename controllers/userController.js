@@ -7,6 +7,7 @@ import { validationResult } from "express-validator";
 import { fileURLToPath } from "url";
 import path from "path";
 import User from "../models/userModel.js";
+import { onlineUsers } from "../sockets/onlineUserSocket.js";
 
 const register = async (req, res) => {
   try {
@@ -73,6 +74,20 @@ const login = async (req, res) => {
         .json({ message: "Email and password are required." });
     }
     const user = await userModel.findOne({ email });
+    if (!user) {
+      // Email not found
+      return res
+        .status(401)
+        .json({ message: "Email or password is incorrect." });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      // Password incorrect
+      return res
+        .status(401)
+        .json({ message: "Email or password is incorrect." });
+    }
+
     if (user && (await bcrypt.compare(password, user.password))) {
       // Clear previous cookies
       res.clearCookie("access_token", {
@@ -110,8 +125,10 @@ const login = async (req, res) => {
       );
 
       // Emit the loggedUsersUpdate event
-      req.io.emit("loggedUsersUpdate", Array.from(req.onlineUsers));
-
+      req.io.emit(
+        "loggedUsersUpdate",
+        Array.from(onlineUsers.values()).map((u) => u.userData)
+      );
       res.status(200).json({ message: "Login successful", user, accessToken });
     } else {
       res.status(401).json({ message: "Email or Password is incorrect." });
@@ -236,16 +253,12 @@ const updateUserInfo = async (req, res) => {
 
     res.json(updatedUser);
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error updating user information",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error updating user information",
+      error: error.message,
+    });
   }
 };
-
-
 
 export const getUserThemeIndex = async (req, res) => {
   try {
@@ -290,11 +303,10 @@ const refreshToken = async (req, res) => {
   }
 };
 
-
 export const updateUserThemeIndex = async (req, res) => {
   try {
     const { themeIndex } = req.body;
-    const userId = req.user._id; 
+    const userId = req.user._id;
     const user = await User.findByIdAndUpdate(
       userId,
       { themeIndex },

@@ -3,7 +3,7 @@ import cookie from 'cookie';
 import jwt from 'jsonwebtoken';
 import { registerSocketEvents } from './handlers.js';
 
-export const initSocketServer = (server, redisClient) => {
+export const initSocketServer = (server) => {
   const io = new Server(server, {
     cors: {
       origin: process.env.ORIGIN_URL || "http://localhost:3002",
@@ -26,7 +26,7 @@ export const initSocketServer = (server, redisClient) => {
   });
 
   io.on("connection", (socket) => {
-    registerSocketEvents(io, socket, redisClient);
+    registerSocketEvents(io, socket);
   });
 
   return io;
