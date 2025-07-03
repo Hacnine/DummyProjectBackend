@@ -22,6 +22,7 @@ const userSchema = new Schema(
     last_seen: { type: Date, default: null }, // Last seen timestamp
 
     themeIndex: { type: Number, default: 7, required: false }, // Chat theme preference
+    fileSendingAllowed: { type: Boolean, default: false },
     notification_settings: {
       new_message: { type: Boolean, default: true },
       mention: { type: Boolean, default: true },

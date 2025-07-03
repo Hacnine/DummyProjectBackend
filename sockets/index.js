@@ -1,7 +1,9 @@
-import { Server } from 'socket.io';
-import cookie from 'cookie';
-import jwt from 'jsonwebtoken';
-import { registerSocketEvents } from './handlers.js';
+import { Server } from "socket.io";
+import cookie from "cookie";
+import jwt from "jsonwebtoken";
+import { registerOnlineUserHandlers } from "./onlineUserSocket.js";
+import { registerChatHandlers } from "./chatSocket.js";
+import registerAlertnessHandlers from "./alertnessSocket.js";
 
 export const initSocketServer = (server) => {
   const io = new Server(server, {
@@ -26,7 +28,9 @@ export const initSocketServer = (server) => {
   });
 
   io.on("connection", (socket) => {
-    registerSocketEvents(io, socket);
+    registerOnlineUserHandlers(io, socket);
+    registerChatHandlers(io, socket);
+    registerAlertnessHandlers(io, socket);
   });
 
   return io;

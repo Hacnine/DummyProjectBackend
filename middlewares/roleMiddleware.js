@@ -52,7 +52,7 @@ export const requireAuth = async (req, res, next) => {
 
 export const requireClassAdmin = async (req, res, next) => {
   try {
-    const { classId } = req.params
+    const { id: classId } = req.params
     const userId = req.user._id
 
     const classGroup = await Conversation.findById(classId)
@@ -62,7 +62,6 @@ export const requireClassAdmin = async (req, res, next) => {
     }
 
     const isAdmin = classGroup.group.admins.some((admin) => admin.toString() === userId.toString())
-      console.log(classGroup)
 
     if (!isAdmin) {
       return res.status(403).json({ message: "Access denied. Class admin privileges required." })

@@ -77,7 +77,7 @@ app.use(
 const server = http.createServer(app);
 
 // Initialize Socket.IO with your modular handlers
-const io = initSocketServer(server, redisClient);
+const io = initSocketServer(server);
 
 // Attach io instance to req for routes
 const attachIo = (req, res, next) => {

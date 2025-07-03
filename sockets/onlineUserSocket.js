@@ -1,10 +1,11 @@
-export const onlineUsers = new Map(); // userId -> { socketId, userData }
+import userModel from "../models/userModel.js";
 
-export const addOnlineUser = async (userId, socketId, userModel) => {
-  // Optionally fetch user data if not present
+export const onlineUsers = new Map(); 
+
+export const addOnlineUser = async (userId, socketId) => {
   let userData = onlineUsers.get(userId)?.userData;
   if (!userData) {
-    const user = await userModel.findById(userId, "-password");
+    const user = await userModel.findById(userId, "name image");
     userData = user ? user.toObject() : null;
   }
   if (userData) {
@@ -24,4 +25,29 @@ export const sendOnlineUsersList = (io) => {
       loggedUsers.filter(u => u._id.toString() !== userId)
     );
   }
+};
+
+export const registerOnlineUserHandlers = (io, socket, userModel) => {
+  const userId = socket.user?.id;
+  const socketId = socket.id;
+
+  if (userId) {
+    addOnlineUser(userId, socketId, userModel).then(() => {
+      sendOnlineUsersList(io);
+    });
+  }
+
+  socket.on("userOnline", async (id) => {
+    if (id && !onlineUsers.has(id)) {
+      await addOnlineUser(id, socket.id, userModel);
+      sendOnlineUsersList(io);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    if (userId) {
+      removeOnlineUser(userId);
+      sendOnlineUsersList(io);
+    }
+  });
 };

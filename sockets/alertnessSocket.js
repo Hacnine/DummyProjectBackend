@@ -1,4 +1,3 @@
-
 import {
   startAlertnessSession,
   endAlertnessSession,
@@ -12,6 +11,22 @@ export default function registerAlertnessHandlers(io, socket) {
     socket.join(classId);
   });
 
+  // Helper to emit updated session history to the room
+  async function emitSessionHistory(classId, userId) {
+    const req = {
+      params: { classId },
+      user: { _id: userId },
+      query: {},
+    };
+    const res = {
+      status: () => res,
+      json: (data) => {
+        io.to(classId).emit("alertnessSessionHistory", { sessions: data.sessions });
+      },
+    };
+    await getAlertnessSessions(req, res);
+  }
+
   // Start alertness session
   socket.on("startAlertnessSession", async ({ classId, duration, startedBy }) => {
     try {
@@ -23,12 +38,14 @@ export default function registerAlertnessHandlers(io, socket) {
       };
       const res = {
         status: () => res,
-        json: (data) => {
+        json: async (data) => {
           io.to(classId).emit("alertnessSessionStarted", {
             sessionId: data.session._id,
             duration: data.session.duration,
             startedBy: startedBy,
           });
+          // Emit updated session history
+          await emitSessionHistory(classId, socket.user.id);
         },
       };
       await startAlertnessSession(req, res);
@@ -47,11 +64,13 @@ export default function registerAlertnessHandlers(io, socket) {
       };
       const res = {
         status: () => res,
-        json: (data) => {
+        json: async (data) => {
           io.to(classId).emit("alertnessSessionEnded", {
             sessionId: data.session._id,
             responseRate: data.session.responseRate,
           });
+          // Emit updated session history
+          await emitSessionHistory(classId, socket.user.id);
         },
       };
       await endAlertnessSession(req, res);
@@ -69,8 +88,9 @@ export default function registerAlertnessHandlers(io, socket) {
       };
       const res = {
         status: () => res,
-        json: (data) => {
+        json: async (data) => {
           // Optionally emit an update
+          await emitSessionHistory(classId, userId);
         },
       };
       await respondToAlertnessSession(req, res);
