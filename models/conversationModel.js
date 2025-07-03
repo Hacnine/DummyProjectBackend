@@ -33,7 +33,7 @@ const conversationSchema = new Schema(
       // ✅ Extended fields for classroom functionality
       classType: {
         type: String,
-        enum: ["regular", "exam"],
+        enum: ["regular", "weekly", "multi-weekly", "monthly", "exam"],
         default: "regular",
       },
       fileSendingAllowed: { type: Boolean, default: true },
