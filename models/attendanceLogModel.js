@@ -8,7 +8,7 @@ const attendanceLogSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     status: {
       type: String,
-      enum: ["present", "late", "absent"],
+      enum: ["present", "late", "absent", "excused"],
       default: "absent",
     },
     enteredAt: { type: Date },

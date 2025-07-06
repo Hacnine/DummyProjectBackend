@@ -36,37 +36,53 @@ export const createManualSession = async (req, res) => {
   }
 };
 
-// Auto-generate sessions
 export const autoGenerateSessions = async (req, res) => {
   try {
+    const { classId } = req.body;
     const today = moment().format("YYYY-MM-DD");
-    const classes = await Conversation.find({ "group.type": "classroom" });
+    const todayDay = moment().day();
 
-    for (const classGroup of classes) {
-      if (classGroup.classType === "regular") {
-        const session = new Session({
-          classId: classGroup._id,
-          date: today,
-          startTime: "09:00", // Default start time
-          cutoffTime: "09:15",
-        });
-        await session.save();
-      } else if (classGroup.classType === "multi-weekly") {
-        const selectedDays = classGroup.group.selectedDays || []; // Assume selectedDays stored in group
-        const todayDay = moment().day();
-        if (selectedDays.includes(todayDay)) {
-          const session = new Session({
-            classId: classGroup._id,
-            date: today,
-            startTime: "09:00",
-            cutoffTime: "09:15",
-          });
-          await session.save();
-        }
+    const classGroup = await Conversation.findById(classId);
+    if (!classGroup) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const startTime = classGroup.group.startTime || "09:00";
+    const cutoffTime = classGroup.group.cutoffTime || "09:15";
+    const classType = classGroup.group.classType || "regular";
+
+    // Check if a session already exists for today
+    const existingSession = await Session.findOne({
+      classId,
+      date: today,
+    });
+    if (existingSession) {
+      return res.status(400).json({ message: `Session already exists for class ${classId} on ${today}` });
+    }
+
+    let shouldCreateSession = false;
+    if (classType === "regular") {
+      shouldCreateSession = true;
+    } else if (classType === "multi-weekly") {
+      const selectedDays = classGroup.group.selectedDays || [];
+      if (selectedDays.includes(todayDay)) {
+        shouldCreateSession = true;
       }
     }
 
-    res.json({ message: "Auto-generated sessions successfully" });
+    if (shouldCreateSession) {
+      const session = new Session({
+        classId,
+        date: today,
+        startTime,
+        cutoffTime,
+        type: "auto",
+      });
+      await session.save();
+      res.json({ message: "Session created successfully", session });
+    } else {
+      res.status(400).json({ message: `No session created for class ${classId} on ${today} (classType: ${classType}, todayDay: ${todayDay})` });
+    }
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -92,7 +108,7 @@ export const getSessions = async (req, res) => {
 // Mark attendance
 export const markAttendance = async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, classId, enteredAt } = req.body;
     const userId = req.user._id;
     const today = moment().format("YYYY-MM-DD");
     const now = moment();
@@ -113,11 +129,14 @@ export const markAttendance = async (req, res) => {
       sessionDate: today,
     });
 
-    const sessionTime = moment(
-      `${session.date} ${session.startTime}`,
-      "YYYY-MM-DD HH:mm"
-    );
-    const status = now.isAfter(sessionTime) ? "late" : "present";
+    const sessionTime = moment(`${session.date} ${session.startTime}`, "YYYY-MM-DD HH:mm");
+    const status = enteredAt
+      ? moment(enteredAt).isAfter(sessionTime)
+        ? "late"
+        : "present"
+      : now.isAfter(sessionTime)
+      ? "late"
+      : "present";
 
     if (!attendanceLog) {
       attendanceLog = new AttendanceLog({
@@ -125,11 +144,11 @@ export const markAttendance = async (req, res) => {
         classId: session.classId,
         userId,
         sessionDate: today,
-        enteredAt: new Date(),
+        enteredAt: enteredAt || new Date(),
         status,
       });
     } else {
-      attendanceLog.enteredAt = new Date();
+      attendanceLog.enteredAt = enteredAt || new Date();
       attendanceLog.status = status;
       attendanceLog.leftAt = null;
     }
@@ -171,11 +190,10 @@ export const editAttendance = async (req, res) => {
   }
 };
 
-// Bulk update attendance
 export const bulkUpdateAttendance = async (req, res) => {
   try {
     const { sessionId, updates } = req.body; // updates: [{ userId, status, duration, leftAt }]
-
+console.log(updates, "sessionID")
     const session = await Session.findById(sessionId);
     if (!session) {
       return res.status(404).json({ message: "Session not found" });
@@ -186,16 +204,23 @@ export const bulkUpdateAttendance = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const bulkOps = updates.map(({ userId, status, duration, leftAt }) => ({
-      updateOne: {
-        filter: { sessionId, userId, sessionDate: session.date },
-        update: { $set: { status, duration, leftAt } },
-        upsert: true,
-      },
-    }));
+    const validStatuses = ["present", "late", "absent", "excused"];
+    const bulkOps = updates
+      .filter(({ userId, status }) => classGroup.group.members.includes(userId) && validStatuses.includes(status))
+      .map(({ userId, status, duration, leftAt }) => ({
+        updateOne: {
+          filter: { sessionId, userId, sessionDate: session.date },
+          update: { $set: { status, duration, leftAt } },
+          upsert: true,
+        },
+      }));
+
+    if (bulkOps.length === 0) {
+      return res.status(400).json({ message: "No valid updates provided" });
+    }
 
     await AttendanceLog.bulkWrite(bulkOps);
-    res.json({ message: "Bulk attendance updated successfully" });
+    res.json({ message: `Bulk attendance updated successfully for ${bulkOps.length} students` });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -336,88 +361,177 @@ export const getClassAttendance = async (req, res) => {
   }
 };
 // Get class attendance analytics
+
 export const getAttendanceAnalytics = async (req, res) => {
   try {
     const { classId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, view = "daily" } = req.query;
 
+    // Validate class and user access
     const classGroup = await Conversation.findById(classId);
-    console.log(classGroup);
-
     if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" });
     }
-    const dateFilter = { classId };
-    if (startDate && endDate) {
-      dateFilter.sessionDate = { $gte: startDate, $lte: endDate };
-    }
-    const totalSessions = await Session.countDocuments({ classId });
-    const attendanceTrends = await AttendanceLog.aggregate([
-      { $match: dateFilter },
-      {
-        $group: {
-          _id: "$sessionDate",
-          present: { $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } },
-          late: { $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] } },
-          absent: { $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] } },
-          total: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          date: "$_id",
-          present: 1,
-          late: 1,
-          absent: 1,
-          total: 1,
-          rate: {
-            $round: [
-              { $multiply: [{ $divide: ["$present", "$total"] }, 100] },
-              2,
-            ],
-          },
-        },
-      },
-      { $sort: { date: 1 } },
-    ]);
-    const avgAttendance = attendanceTrends.length
-      ? (
-          attendanceTrends.reduce((sum, day) => sum + day.rate, 0) /
-          attendanceTrends.length
-        ).toFixed(2)
-      : 0;
 
-    const weeklyTrends = await AttendanceLog.aggregate([
+    // Build date filter
+    let dateFilter = { classId };
+    if (startDate && endDate) {
+      dateFilter.sessionDate = {
+        $gte: moment(startDate).format("YYYY-MM-DD"),
+        $lte: moment(endDate).format("YYYY-MM-DD"),
+      };
+    } else {
+      // Default to last 30 days if no date range provided
+      dateFilter.sessionDate = {
+        $gte: moment().subtract(30, "days").format("YYYY-MM-DD"),
+        $lte: moment().format("YYYY-MM-DD"),
+      };
+    }
+
+    // Aggregate attendance statistics
+    const stats = await AttendanceLog.aggregate([
       { $match: dateFilter },
       {
         $group: {
-          _id: { $week: { $dateFromString: { dateString: "$sessionDate" } } },
-          present: { $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } },
-          total: { $sum: 1 },
+          _id: {
+            ...(view === "daily" && { date: "$sessionDate" }),
+            ...(view === "weekly" && {
+              week: { $isoWeek: { $dateFromString: { dateString: "$sessionDate" } } },
+              year: { $isoWeekYear: { $dateFromString: { dateString: "$sessionDate" } } },
+            }),
+            ...(view === "monthly" && {
+              month: { $month: { $dateFromString: { dateString: "$sessionDate" } } },
+              year: { $year: { $dateFromString: { dateString: "$sessionDate" } } },
+            }),
+            status: "$status",
+          },
+          count: { $sum: 1 },
         },
       },
       {
-        $project: {
-          week: "$_id",
-          rate: {
-            $round: [
-              { $multiply: [{ $divide: ["$present", "$total"] }, 100] },
-              2,
-            ],
+        $group: {
+          _id: view === "daily" ? "$_id.date" : view === "weekly" ? { week: "$_id.week", year: "$_id.year" } : { month: "$_id.month", year: "$_id.year" },
+          statuses: {
+            $push: {
+              status: "$_id.status",
+              count: "$count",
+            },
           },
+          total: { $sum: "$count" },
         },
       },
-      { $sort: { week: 1 } },
+      {
+        $sort: view === "daily" ? { _id: 1 } : { "_id.year": 1, "_id.week": 1, "_id.month": 1 },
+      },
     ]);
+
+    // Calculate overall summary
+    const overallStats = await AttendanceLog.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalSessions = await Session.countDocuments({
+      classId,
+      date: { $gte: dateFilter.sessionDate.$gte, $lte: dateFilter.sessionDate.$lte },
+    });
+
+    // Initialize summary with default values
+    const summary = {
+      totalStudents: classGroup.group.members.length,
+      totalSessions,
+      present: 0,
+      late: 0,
+      absent: 0,
+      excused: 0,
+      attendanceRate: "0.00",
+    };
+
+    // Populate summary with actual counts
+    overallStats.forEach((stat) => {
+      if (stat._id === "present") summary.present = stat.count;
+      if (stat._id === "late") summary.late = stat.count;
+      if (stat._id === "absent") summary.absent = stat.count;
+      if (stat._id === "excused") summary.excused = stat.count;
+    });
+
+    // Calculate attendance rate
+    const totalPossibleAttendance = totalSessions * summary.totalStudents;
+    summary.attendanceRate =
+      totalPossibleAttendance > 0
+        ? ((summary.present / totalPossibleAttendance) * 100).toFixed(2)
+        : "0.00";
+
+    // Format data for chart
+    const chartData = stats.map((stat) => {
+      const present = stat.statuses.find((s) => s.status === "present")?.count || 0;
+      const late = stat.statuses.find((s) => s.status === "late")?.count || 0;
+      const absent = stat.statuses.find((s) => s.status === "absent")?.count || 0;
+      const excused = stat.statuses.find((s) => s.status === "excused")?.count || 0;
+
+      return {
+        period: view === "daily" ? stat._id : view === "weekly" ? `Week ${stat._id.week}, ${stat._id.year}` : `${moment.months(stat._id.month - 1)} ${stat._id.year}`,
+        present,
+        late,
+        absent,
+        excused,
+        attendanceRate: stat.total > 0 ? ((present / stat.total) * 100).toFixed(2) : "0.00",
+      };
+    });
+
+    // Create chart for attendance trends
+    const chart = {
+      type: "bar",
+      data: {
+        labels: chartData.map((d) => d.period),
+        datasets: [
+          {
+            label: "Present",
+            data: chartData.map((d) => d.present),
+            backgroundColor: "#4CAF50",
+          },
+          {
+            label: "Late",
+            data: chartData.map((d) => d.late),
+            backgroundColor: "#FFC107",
+          },
+          {
+            label: "Absent",
+            data: chartData.map((d) => d.absent),
+            backgroundColor: "#F44336",
+          },
+          {
+            label: "Excused",
+            data: chartData.map((d) => d.excused),
+            backgroundColor: "#2196F3",
+          },
+        ],
+      },
+      options: {
+        scales: {
+          x: { stacked: true },
+          y: { stacked: true, beginAtZero: true, title: { display: true, text: "Number of Students" } },
+        },
+        plugins: {
+          title: { display: true, text: `Attendance Analytics (${view.charAt(0).toUpperCase() + view.slice(1)})` },
+          legend: { position: "top" },
+        },
+      },
+    };
 
     res.json({
-      totalSessions,
-      attendanceTrends,
-      weeklyTrends,
-      averageAttendance: avgAttendance,
+      summary,
+      chartData,
+      chart,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server errorrrr", error: error.message });
+    console.error("getAttendanceAnalytics error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 

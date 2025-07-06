@@ -53,7 +53,7 @@ export const createClass = async (req, res) => {
         selectedDays,
         admins: [teacherId],
         // moderators: [],
-        // members: [teacherId],
+        members: [teacherId],
         // fileSendingAllowed: false,
       },
       visibility: "private",

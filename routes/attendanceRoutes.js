@@ -27,7 +27,7 @@ router.get("/sessions", getSessions);
 // Attendance routes
 router.post("/mark", markAttendance);
 router.put("/edit/:recordId", requireClassAdmin, editAttendance);
-router.post("/bulk", requireClassAdmin, bulkUpdateAttendance);
+router.post("/bulk/:classId", requireClassAdmin, bulkUpdateAttendance);
 router.get("/session/:sessionId", getSessionAttendance);
 router.get("/student/:studentId", getStudentAttendance);
 router.get("/analytics/class/:classId", getAttendanceAnalytics);
