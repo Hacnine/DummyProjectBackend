@@ -39,6 +39,28 @@ const conversationSchema = new Schema(
       fileSendingAllowed: { type: Boolean, default: true },
       moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
       members: [{ type: Schema.Types.ObjectId, ref: "User" }],
+      startTime: { type: String, default: "09:00" }, // e.g., "09:00", "14:30"
+      cutoffTime: { type: String, default: "09:15" }, // e.g., "09:15", "14:45"
+      checkInterval: { type: Number, default: 15 }, // e.g., 15 for 15 minutes
+      selectedDays: [
+        {
+          type: Number,
+          min: 0,
+          max: 6,
+          validate: {
+            validator: function (days) {
+              if (
+                this.classType === "multi-weekly" &&
+                (!days || days.length === 0)
+              ) {
+                return false;
+              }
+              return true;
+            },
+            message: "selectedDays is required for multi-weekly classes",
+          },
+        },
+      ], // 0 = Sunday, 6 = Saturday
     },
     themeIndex: { type: Number, default: 6, required: false },
     last_message: {

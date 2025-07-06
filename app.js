@@ -1,3 +1,4 @@
+import 'esm-module-alias';
 import express from "express";
 import cookieParser from "cookie-parser";
 import userRouter from "./routes/userRoute.js";
@@ -22,6 +23,7 @@ import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import { initSocketServer } from "./sockets/index.js";
+import { startCronJobs } from "./utils/cronJobs.js"; 
 
 dotenv.config();
 
@@ -104,6 +106,7 @@ app.use("/class-group/flies", fileRoutes);
 // Connect to DB and start server
 connectDB(DATABASE_URL)
   .then(() => {
+    startCronJobs();
     server.listen(port, () => console.log(`Server running on port ${port}`));
   })
   .catch((err) => {

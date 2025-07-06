@@ -1,324 +1,485 @@
-import AttendanceLog from "../models/attendanceLogModel.js"
-import Conversation from "../models/conversationModel.js"
+import Session from "../models/sessionModel.js";
+import AttendanceLog from "../models/attendanceLogModel.js";
+import Conversation from "../models/conversationModel.js";
+import moment from "moment";
+
+// Create manual session
+export const createManualSession = async (req, res) => {
+  try {
+    const { date, startTime, cutoffTime, duration } = req.body;
+    const createdBy = req.user._id;
+    const { classId } = req.params;
+    const classGroup = await Conversation.findById(classId);
+    if (!classGroup || !classGroup.group.admins.includes(createdBy)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    // Use provided cutoffTime or default to startTime + 15 minutes
+    const finalCutoffTime = cutoffTime
+      ? moment(cutoffTime, "HH:mm").format("HH:mm")
+      : moment(startTime, "HH:mm").add(15, "minutes").format("HH:mm");
+
+    const session = new Session({
+      classId,
+      date,
+      startTime,
+      type: "manual",
+      createdBy,
+      duration,
+      cutoffTime: finalCutoffTime,
+    });
+
+    await session.save();
+    res.json({ message: "Session created successfully", session });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Auto-generate sessions
+export const autoGenerateSessions = async (req, res) => {
+  try {
+    const today = moment().format("YYYY-MM-DD");
+    const classes = await Conversation.find({ "group.type": "classroom" });
+
+    for (const classGroup of classes) {
+      if (classGroup.classType === "regular") {
+        const session = new Session({
+          classId: classGroup._id,
+          date: today,
+          startTime: "09:00", // Default start time
+          cutoffTime: "09:15",
+        });
+        await session.save();
+      } else if (classGroup.classType === "multi-weekly") {
+        const selectedDays = classGroup.group.selectedDays || []; // Assume selectedDays stored in group
+        const todayDay = moment().day();
+        if (selectedDays.includes(todayDay)) {
+          const session = new Session({
+            classId: classGroup._id,
+            date: today,
+            startTime: "09:00",
+            cutoffTime: "09:15",
+          });
+          await session.save();
+        }
+      }
+    }
+
+    res.json({ message: "Auto-generated sessions successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Get sessions
+export const getSessions = async (req, res) => {
+  try {
+    const { classId, date } = req.query;
+    const filter = { classId };
+    if (date) filter.date = date;
+
+    const sessions = await Session.find(filter)
+      .populate("classId", "group.name")
+      .sort({ date: -1, startTime: -1 });
+
+    res.json({ sessions });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
 
 // Mark attendance
 export const markAttendance = async (req, res) => {
   try {
-    const { classId } = req.params
-    const userId = req.user._id
+    const { sessionId } = req.body;
+    const userId = req.user._id;
+    const today = moment().format("YYYY-MM-DD");
+    const now = moment();
 
-    // Check if user is a member of the class
-    const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
-      return res.status(403).json({ message: "Access denied" })
+    const session = await Session.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
     }
 
-    const today = new Date().toISOString().split("T")[0] // YYYY-MM-DD
+    const classGroup = await Conversation.findById(session.classId);
+    if (!classGroup || !classGroup.group.members.includes(userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
 
-    // Check if already logged for today
-    let attendanceLog = await AttendanceLog.findOne({ classId, userId, sessionDate: today })
+    let attendanceLog = await AttendanceLog.findOne({
+      sessionId,
+      userId,
+      sessionDate: today,
+    });
+
+    const sessionTime = moment(
+      `${session.date} ${session.startTime}`,
+      "YYYY-MM-DD HH:mm"
+    );
+    const status = now.isAfter(sessionTime) ? "late" : "present";
 
     if (!attendanceLog) {
       attendanceLog = new AttendanceLog({
-        classId,
+        sessionId,
+        classId: session.classId,
         userId,
         sessionDate: today,
         enteredAt: new Date(),
-      })
-      await attendanceLog.save()
+        status,
+      });
     } else {
-      // Update entry time if re-entering
-      attendanceLog.enteredAt = new Date()
-      attendanceLog.leftAt = null
-      await attendanceLog.save()
+      attendanceLog.enteredAt = new Date();
+      attendanceLog.status = status;
+      attendanceLog.leftAt = null;
     }
 
+    await attendanceLog.save();
     res.json({
       message: "Attendance marked successfully",
       attendance: attendanceLog,
-    })
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
+    res.status(500).json({ message: "Server error", error: error.message });
   }
-}
+};
 
-// Get class attendance
-export const getClassAttendance = async (req, res) => {
+// Edit attendance
+export const editAttendance = async (req, res) => {
   try {
-    const { classId } = req.params
-    const { date, view = "daily", page = 1, limit = 10 } = req.query
+    const { recordId } = req.params;
+    const { status, leftAt, duration } = req.body;
 
-    // Check if user has access to class
-    const classGroup = await Conversation.findById(classId)
+    const record = await AttendanceLog.findById(recordId);
+    if (!record) {
+      return res.status(404).json({ message: "Attendance record not found" });
+    }
+
+    const classGroup = await Conversation.findById(record.classId);
+    if (!classGroup.group.admins.includes(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    if (status) record.status = status;
+    if (leftAt) record.leftAt = leftAt;
+    if (duration) record.duration = duration;
+
+    await record.save();
+    res.json({ message: "Attendance updated successfully", record });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Bulk update attendance
+export const bulkUpdateAttendance = async (req, res) => {
+  try {
+    const { sessionId, updates } = req.body; // updates: [{ userId, status, duration, leftAt }]
+
+    const session = await Session.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    const classGroup = await Conversation.findById(session.classId);
+    if (!classGroup.group.admins.includes(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const bulkOps = updates.map(({ userId, status, duration, leftAt }) => ({
+      updateOne: {
+        filter: { sessionId, userId, sessionDate: session.date },
+        update: { $set: { status, duration, leftAt } },
+        upsert: true,
+      },
+    }));
+
+    await AttendanceLog.bulkWrite(bulkOps);
+    res.json({ message: "Bulk attendance updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Get session attendance
+export const getSessionAttendance = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const session = await Session.findById(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    const classGroup = await Conversation.findById(session.classId);
     if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
+      return res.status(403).json({ message: "Access denied" });
     }
 
-    const dateFilter = {}
-    if (date) {
-      const targetDate = new Date(date)
-      switch (view) {
-        case "daily":
-          dateFilter.sessionDate = date
-          break
-        case "weekly":
-          const weekStart = new Date(targetDate)
-          weekStart.setDate(targetDate.getDate() - targetDate.getDay())
-          const weekEnd = new Date(weekStart)
-          weekEnd.setDate(weekStart.getDate() + 6)
-          dateFilter.sessionDate = {
-            $gte: weekStart.toISOString().split("T")[0],
-            $lte: weekEnd.toISOString().split("T")[0],
-          }
-          break
-        case "monthly":
-          const monthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1)
-          const monthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0)
-          dateFilter.sessionDate = {
-            $gte: monthStart.toISOString().split("T")[0],
-            $lte: monthEnd.toISOString().split("T")[0],
-          }
-          break
-      }
-    }
-
-    const attendance = await AttendanceLog.find({ classId, ...dateFilter })
+    const attendance = await AttendanceLog.find({ sessionId })
       .populate("userId", "name email image")
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .sort({ enteredAt: -1 })
+      .sort({ enteredAt: -1 });
 
-    const total = await AttendanceLog.countDocuments({ classId, ...dateFilter })
-
-    res.json({
-      attendance,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
-    })
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-}
-
-// Get user attendance
-export const getUserAttendance = async (req, res) => {
-  try {
-    const { userId, classId } = req.params
-    const { page = 1, limit = 10 } = req.query
-
-    // Check if user has access
-    const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
-
-    const attendance = await AttendanceLog.find({ classId, userId })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ enteredAt: -1 })
-
-    const total = await AttendanceLog.countDocuments({ classId, userId })
-
-    res.json({
-      attendance,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
-    })
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-}
-
-// Update attendance record
-export const updateAttendanceRecord = async (req, res) => {
-  try {
-    const { recordId } = req.params
-    const { leftAt, duration } = req.body
-
-    const record = await AttendanceLog.findById(recordId)
-    if (!record) {
-      return res.status(404).json({ message: "Attendance record not found" })
-    }
-
-    // Check if user is admin of the class
-    const classGroup = await Conversation.findById(record.classId)
-    if (!classGroup.group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
-
-    if (leftAt) record.leftAt = leftAt
-    if (duration) record.duration = duration
-
-    await record.save()
-
-    res.json({
-      message: "Attendance record updated successfully",
-      record,
-    })
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-}
-
-// Delete attendance record
-export const deleteAttendanceRecord = async (req, res) => {
-  try {
-    const { recordId } = req.params
-
-    const record = await AttendanceLog.findById(recordId)
-    if (!record) {
-      return res.status(404).json({ message: "Attendance record not found" })
-    }
-
-    // Check if user is admin of the class
-    const classGroup = await Conversation.findById(record.classId)
-    if (!classGroup.group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
-
-    await AttendanceLog.findByIdAndDelete(recordId)
-
-    res.json({ message: "Attendance record deleted successfully" })
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-}
-
-// Get attendance statistics
-export const getAttendanceStats = async (req, res) => {
-  try {
-    const { classId } = req.params
-
-    // Check if user has access
-    const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
+    const total = await AttendanceLog.countDocuments({ sessionId });
 
     const stats = await AttendanceLog.aggregate([
-      { $match: { classId: classId } },
+      { $match: { sessionId } },
       {
         $group: {
-          _id: null,
-          totalRecords: { $sum: 1 },
-          uniqueStudents: { $addToSet: "$userId" },
-          totalDays: { $addToSet: "$sessionDate" },
-          averageDuration: { $avg: "$duration" },
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const summary = {
+      totalStudents: classGroup.group.members.length,
+      present: stats.find((s) => s._id === "present")?.count || 0,
+      late: stats.find((s) => s._id === "late")?.count || 0,
+      absent: stats.find((s) => s._id === "absent")?.count || 0,
+    };
+
+    res.json({
+      attendance,
+      summary,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Get student attendance
+export const getStudentAttendance = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { classId, page = 1, limit = 10 } = req.query;
+
+    const classGroup = await Conversation.findById(classId);
+    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const attendance = await AttendanceLog.find({ userId: studentId, classId })
+      .populate("sessionId", "date startTime")
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .sort({ sessionDate: -1 });
+
+    const total = await AttendanceLog.countDocuments({
+      userId: studentId,
+      classId,
+    });
+
+    const stats = await AttendanceLog.aggregate([
+      { $match: { userId: studentId, classId } },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const presentCount = stats.find((s) => s._id === "present")?.count || 0;
+    const totalSessions = stats.reduce((sum, s) => sum + s.count, 0);
+    const presentRate =
+      totalSessions > 0 ? ((presentCount / totalSessions) * 100).toFixed(2) : 0;
+
+    res.json({
+      attendance,
+      presentRate,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getClassAttendance = async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { date, view = "daily" } = req.query;
+
+    // Check user
+    // if (!req.user) {
+    //   return res.status(401).json({ message: "Unauthorized" });
+    // }
+
+    // Find class
+    const classGroup = await Conversation.findById(classId);
+    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    // Build filter
+    let filter = { classId };
+    if (date) filter.sessionDate = date;
+
+    // Fetch attendance
+    const attendance = await AttendanceLog.find(filter)
+      .populate("userId", "name email image")
+      .populate("sessionId", "date startTime")
+      .sort({ sessionDate: -1 });
+
+    res.json({ attendance });
+  } catch (error) {
+    console.error("getClassAttendance error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+// Get class attendance analytics
+export const getAttendanceAnalytics = async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const classGroup = await Conversation.findById(classId);
+    console.log(classGroup);
+
+    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const dateFilter = { classId };
+    if (startDate && endDate) {
+      dateFilter.sessionDate = { $gte: startDate, $lte: endDate };
+    }
+    const totalSessions = await Session.countDocuments({ classId });
+    const attendanceTrends = await AttendanceLog.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: "$sessionDate",
+          present: { $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } },
+          late: { $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] } },
+          absent: { $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] } },
+          total: { $sum: 1 },
         },
       },
       {
         $project: {
-          totalRecords: 1,
-          uniqueStudents: { $size: "$uniqueStudents" },
-          totalDays: { $size: "$totalDays" },
-          averageDuration: { $round: ["$averageDuration", 2] },
-          attendanceRate: {
+          date: "$_id",
+          present: 1,
+          late: 1,
+          absent: 1,
+          total: 1,
+          rate: {
             $round: [
-              {
-                $multiply: [
-                  {
-                    $divide: ["$totalRecords", { $multiply: [{ $size: "$uniqueStudents" }, { $size: "$totalDays" }] }],
-                  },
-                  100,
-                ],
-              },
+              { $multiply: [{ $divide: ["$present", "$total"] }, 100] },
               2,
             ],
           },
         },
       },
-    ])
+      { $sort: { date: 1 } },
+    ]);
+    const avgAttendance = attendanceTrends.length
+      ? (
+          attendanceTrends.reduce((sum, day) => sum + day.rate, 0) /
+          attendanceTrends.length
+        ).toFixed(2)
+      : 0;
 
-    res.json({
-      stats: stats.length > 0 ? stats[0] : { totalRecords: 0, uniqueStudents: 0, totalDays: 0, attendanceRate: 0 },
-    })
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
-  }
-}
-
-// Get attendance report
-export const getAttendanceReport = async (req, res) => {
-  try {
-    const { classId } = req.params
-    const { startDate, endDate } = req.query
-
-    // Check if user is admin
-    const classGroup = await Conversation.findById(classId)
-    if (!classGroup.group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
-
-    const dateFilter = { classId }
-    if (startDate && endDate) {
-      dateFilter.sessionDate = { $gte: startDate, $lte: endDate }
-    }
-
-    const report = await AttendanceLog.aggregate([
+    const weeklyTrends = await AttendanceLog.aggregate([
       { $match: dateFilter },
       {
-        $lookup: {
-          from: "users",
-          localField: "userId",
-          foreignField: "_id",
-          as: "user",
+        $group: {
+          _id: { $week: { $dateFromString: { dateString: "$sessionDate" } } },
+          present: { $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } },
+          total: { $sum: 1 },
         },
       },
-      { $unwind: "$user" },
       {
-        $group: {
-          _id: "$userId",
-          userName: { $first: "$user.name" },
-          userEmail: { $first: "$user.email" },
-          totalSessions: { $sum: 1 },
-          totalDuration: { $sum: "$duration" },
-          averageDuration: { $avg: "$duration" },
-          sessions: {
-            $push: {
-              date: "$sessionDate",
-              enteredAt: "$enteredAt",
-              leftAt: "$leftAt",
-              duration: "$duration",
-            },
+        $project: {
+          week: "$_id",
+          rate: {
+            $round: [
+              { $multiply: [{ $divide: ["$present", "$total"] }, 100] },
+              2,
+            ],
           },
         },
       },
-      { $sort: { userName: 1 } },
-    ])
+      { $sort: { week: 1 } },
+    ]);
 
-    res.json({ report })
+    res.json({
+      totalSessions,
+      attendanceTrends,
+      weeklyTrends,
+      averageAttendance: avgAttendance,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
+    res.status(500).json({ message: "Server errorrrr", error: error.message });
   }
-}
+};
 
-// Export attendance data
-export const exportAttendance = async (req, res) => {
+// Get global attendance analytics
+export const getGlobalAttendanceAnalytics = async (req, res) => {
   try {
-    const { classId } = req.params
-    const { format = "json" } = req.query
+    const classes = await Conversation.find({ "group.type": "classroom" });
+    const classIds = classes.map((c) => c._id);
 
-    // Check if user is admin
-    const classGroup = await Conversation.findById(classId)
-    if (!classGroup.group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Access denied" })
-    }
+    const analytics = await Promise.all(
+      classIds.map(async (classId) => {
+        const classGroup = await Conversation.findById(classId);
+        const attendance = await AttendanceLog.aggregate([
+          { $match: { classId } },
+          {
+            $group: {
+              _id: "$sessionDate",
+              present: {
+                $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] },
+              },
+              total: { $sum: 1 },
+            },
+          },
+          {
+            $project: {
+              rate: {
+                $round: [
+                  { $multiply: [{ $divide: ["$present", "$total"] }, 100] },
+                  2,
+                ],
+              },
+            },
+          },
+        ]);
 
-    const attendance = await AttendanceLog.find({ classId })
-      .populate("userId", "name email")
-      .sort({ sessionDate: -1, enteredAt: -1 })
+        const avgRate = attendance.length
+          ? (
+              attendance.reduce((sum, day) => sum + day.rate, 0) /
+              attendance.length
+            ).toFixed(2)
+          : 0;
 
-    if (format === "csv") {
-      // In a real implementation, you'd generate CSV
-      res.setHeader("Content-Type", "text/csv")
-      res.setHeader("Content-Disposition", "attachment; filename=attendance.csv")
-      res.send("CSV export not implemented yet")
-    } else {
-      res.json({ attendance })
-    }
+        return {
+          classId,
+          className: classGroup.group.name,
+          attendanceRate: avgRate,
+          totalSessions: await Session.countDocuments({ classId }),
+        };
+      })
+    );
+
+    const sortedAnalytics = analytics.sort(
+      (a, b) => b.attendanceRate - a.attentionRate
+    );
+    const needsAttention = analytics.filter((a) => a.attendanceRate < 70); // Threshold for low attendance
+
+    res.json({
+      bestPerforming: sortedAnalytics[0],
+      needsAttention,
+      allClasses: sortedAnalytics,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
+    res.status(500).json({ message: "Server error", error: error.message });
   }
-}
+};

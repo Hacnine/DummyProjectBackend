@@ -1,35 +1,37 @@
-import express from "express"
-import { requireAuth, requireClassAdmin } from "../middlewares/roleMiddleware.js"
+import express from "express";
+import { requireAuth, requireClassAdmin } from "../middlewares/roleMiddleware.js";
 import {
+  createManualSession,
+  getSessions,
+  autoGenerateSessions,
   markAttendance,
+  editAttendance,
+  bulkUpdateAttendance,
+  getSessionAttendance,
+  getStudentAttendance,
+  getAttendanceAnalytics,
+  getGlobalAttendanceAnalytics,
   getClassAttendance,
-  getUserAttendance,
-  updateAttendanceRecord,
-  deleteAttendanceRecord,
-  getAttendanceStats,
-  exportAttendance,
-  getAttendanceReport,
-} from "../controllers/attendanceController.js"
+} from "../controllers/attendanceController.js";
 
-const router = express.Router()
+const router = express.Router();
 
 // All routes require authentication
-router.use(requireAuth)
+router.use(requireAuth);
+router.get("/class/:classId", getClassAttendance);
+// Session routes
+router.post("/sessions/manual/:classId", requireClassAdmin, createManualSession);
+router.post("/sessions/auto-generate", autoGenerateSessions);
+router.get("/sessions", getSessions);
 
-// Mark attendance
-router.post("/class/:classId/mark", markAttendance)
+// Attendance routes
+router.post("/mark", markAttendance);
+router.put("/edit/:recordId", requireClassAdmin, editAttendance);
+router.post("/bulk", requireClassAdmin, bulkUpdateAttendance);
+router.get("/session/:sessionId", getSessionAttendance);
+router.get("/student/:studentId", getStudentAttendance);
+router.get("/analytics/class/:classId", getAttendanceAnalytics);
+router.get("/class/:classId", getClassAttendance);
+router.get("/analytics/global",  getGlobalAttendanceAnalytics);
 
-// Get attendance data
-router.get("/class/:classId", getClassAttendance)
-router.get("/user/:userId/class/:classId", getUserAttendance)
-router.get("/class/:classId/stats", getAttendanceStats)
-router.get("/class/:classId/report", requireClassAdmin, getAttendanceReport)
-
-// Manage attendance records
-router.put("/:recordId", requireClassAdmin, updateAttendanceRecord)
-router.delete("/:recordId", requireClassAdmin, deleteAttendanceRecord)
-
-// Export attendance
-router.get("/class/:classId/export", requireClassAdmin, exportAttendance)
-
-export default router
+export default router;
