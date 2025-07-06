@@ -45,9 +45,9 @@ router.put("/:id/add-moderator", requireClassAdmin, addModerator)
 router.put("/:id/remove-moderator", requireClassAdmin, removeModerator)
 
 // Join request routes
-router.get("/:id/requests", requireClassAdmin, getJoinRequests)
-router.put("/:id/approve/:userId", requireClassAdmin, approveJoinRequest)
-router.put("/:id/reject/:userId", requireClassAdmin, rejectJoinRequest)
+router.get("/:classId/requests/", requireClassAdmin, getJoinRequests)
+router.put("/:classId/approve/:userId", requireClassAdmin, approveJoinRequest)
+router.put("/:classId/reject/:userId", requireClassAdmin, rejectJoinRequest)
 
 // Settings routes
 router.put("/:id/settings", requireClassAdmin, updateClassSettings)
