@@ -12,6 +12,8 @@ import {
   getAttendanceAnalytics,
   getGlobalAttendanceAnalytics,
   getClassAttendance,
+  getLastSession,
+  getAttendanceOverview,
 } from "../controllers/attendanceController.js";
 
 const router = express.Router();
@@ -23,9 +25,10 @@ router.get("/class/:classId", getClassAttendance);
 router.post("/sessions/manual/:classId", requireClassAdmin, createManualSession);
 router.post("/sessions/auto-generate", autoGenerateSessions);
 router.get("/sessions", getSessions);
+router.get("/last-session", getLastSession);
 
 // Attendance routes
-router.post("/mark/:classId", markAttendance);
+router.post("/mark", markAttendance);
 router.put("/edit/:recordId", requireClassAdmin, editAttendance);
 router.post("/bulk/:classId", requireClassAdmin, bulkUpdateAttendance);
 router.get("/session/:sessionId", getSessionAttendance);
@@ -33,5 +36,6 @@ router.get("/student/:studentId", getStudentAttendance);
 router.get("/analytics/class/:classId", getAttendanceAnalytics);
 router.get("/class/:classId", getClassAttendance);
 router.get("/analytics/global",  getGlobalAttendanceAnalytics);
+router.get("/:classId/attendance-overview", getAttendanceOverview);
 
 export default router;

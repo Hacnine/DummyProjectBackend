@@ -21,14 +21,13 @@ const sessionSchema = new Schema(
       enum: ["scheduled", "ongoing", "completed"],
       default: "scheduled",
     },
-    duration: { type: Number }, // In minutes, optional
+    duration: { type: Number, default:70 }, // In minutes, optional
     cutoffTime: { type: String }, // HH:MM format for marking absent
   },
   { timestamps: true }
 );
 
-sessionSchema.index({ classId: 1, date: 1 }, { unique: true });
-sessionSchema.index({ status: 1 });
+sessionSchema.index({ classId: 1, date: 1, startTime: 1 }, { unique: true });sessionSchema.index({ status: 1 });
 
 const Session = mongoose.model("Session", sessionSchema);
 export default Session;

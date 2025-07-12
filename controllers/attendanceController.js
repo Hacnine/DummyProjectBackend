@@ -105,10 +105,41 @@ export const getSessions = async (req, res) => {
   }
 };
 
+export const getLastSession = async (req, res) => {
+  try {
+    const { classId } = req.query;
+
+    if (!classId) {
+      return res.status(400).json({ message: "Missing classId in query" });
+    }
+
+    const session = await Session.findOne({ classId })
+      .sort({ date: -1, startTime: -1 }) // Get latest session
+      .select("_id date startTime duration status"); // Pick only needed fields
+
+    if (!session) {
+      return res.status(404).json({ message: "No session found" });
+    }
+
+    // Send as clean object
+    res.json({
+      id: session._id,
+      date: session.date,
+      time: session.startTime,
+      duration: session.duration,
+      status: session.status,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
 // Mark attendance
 export const markAttendance = async (req, res) => {
   try {
     const { sessionId, classId, enteredAt } = req.body;
+    console.log(sessionId)
     const userId = req.user._id;
     const today = moment().format("YYYY-MM-DD");
     const now = moment();
@@ -592,6 +623,47 @@ export const getGlobalAttendanceAnalytics = async (req, res) => {
       bestPerforming: sortedAnalytics[0],
       needsAttention,
       allClasses: sortedAnalytics,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+export const getAttendanceOverview = async (req, res) => {
+  try {
+    const { classId } = req.params;
+
+    // Validate classId
+    if (!classId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid classId" });
+    }
+
+    // Fetch all attendance records for the class
+    const attendanceRecords = await AttendanceLog.find({ classId }).lean();
+
+    // Calculate total records
+    const totalRecords = attendanceRecords.length;
+
+    // Calculate unique days tracked
+    const daysTracked = new Set(attendanceRecords.map(record => record.sessionDate)).size;
+
+    // Calculate attendance rate
+    // Attendance rate = (present + late) / total records * 100
+    const presentOrLateRecords = attendanceRecords.filter(record =>
+      ["present", "late"].includes(record.status)
+    ).length;
+    const attendanceRate = totalRecords > 0
+      ? ((presentOrLateRecords / totalRecords) * 100).toFixed(2)
+      : 0;
+
+    res.json({
+      attendance: attendanceRecords,
+      analytics: {
+        attendanceRate,
+        totalRecords,
+        daysTracked
+      }
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
