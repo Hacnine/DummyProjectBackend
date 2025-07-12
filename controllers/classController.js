@@ -24,21 +24,34 @@ export const createClass = async (req, res) => {
       return res.status(400).json({ message: "Class name is required" });
     }
     if (!startTime || !isValidTimeFormat(startTime)) {
-      return res.status(400).json({ message: "Valid startTime (HH:mm) is required" });
+      return res
+        .status(400)
+        .json({ message: "Valid startTime (HH:mm) is required" });
     }
     if (!cutoffTime || !isValidTimeFormat(cutoffTime)) {
-      return res.status(400).json({ message: "Valid cutoffTime (HH:mm) is required" });
+      return res
+        .status(400)
+        .json({ message: "Valid cutoffTime (HH:mm) is required" });
     }
     const start = moment(startTime, "HH:mm");
     const cutoff = moment(cutoffTime, "HH:mm");
     if (cutoff.isSameOrBefore(start)) {
-      return res.status(400).json({ message: "cutoffTime must be after startTime" });
+      return res
+        .status(400)
+        .json({ message: "cutoffTime must be after startTime" });
     }
-    if (classType === "multi-weekly" && (!selectedDays || selectedDays.length === 0)) {
-      return res.status(400).json({ message: "selectedDays is required for multi-weekly classes" });
+    if (
+      classType === "multi-weekly" &&
+      (!selectedDays || selectedDays.length === 0)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "selectedDays is required for multi-weekly classes" });
     }
-    if (selectedDays.some(day => day < 0 || day > 6)) {
-      return res.status(400).json({ message: "selectedDays must be between 0 and 6" });
+    if (selectedDays.some((day) => day < 0 || day > 6)) {
+      return res
+        .status(400)
+        .json({ message: "selectedDays must be between 0 and 6" });
     }
 
     const newClass = new Conversation({
@@ -75,7 +88,7 @@ export const createClass = async (req, res) => {
 
 export const deleteClass = async (req, res) => {
   try {
-    const classId = req.params.id;
+    const classId = req.params.classId;
     const deleted = await Conversation.findByIdAndDelete(classId);
     if (!deleted) {
       return res.status(404).json({ message: "Class not found" });
@@ -90,7 +103,7 @@ export const deleteClass = async (req, res) => {
 // Add moderator to class
 export const addModerator = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const { userId } = req.body;
 
     if (!userId) {
@@ -128,7 +141,7 @@ export const addModerator = async (req, res) => {
 // Remove moderator from class
 export const removeModerator = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const { userId } = req.body;
 
     if (!userId) {
@@ -161,7 +174,7 @@ export const removeModerator = async (req, res) => {
 // Add member to class
 export const addMember = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const { userId } = req.body;
 
     if (!userId) {
@@ -205,7 +218,7 @@ export const addMember = async (req, res) => {
 // Remove member from class
 export const removeMember = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const { userId } = req.body;
 
     if (!userId) {
@@ -252,9 +265,9 @@ export const removeMember = async (req, res) => {
 // Request to join class
 export const requestJoinClass = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const userId = req.user._id;
-
+console.log(userId)
     // Check if class exists
     const classGroup = await Conversation.findById(classId);
     if (
@@ -274,6 +287,7 @@ export const requestJoinClass = async (req, res) => {
 
     // Check if request already exists
     const existingRequest = await JoinRequest.findOne({ classId, userId });
+    console.log(existingRequest)
     if (existingRequest) {
       if (existingRequest.status === "pending") {
         return res
@@ -316,7 +330,7 @@ export const requestJoinClass = async (req, res) => {
 // Get pending join requests for a class
 export const getJoinRequests = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
 
     const requests = await JoinRequest.find({ classId, status: "pending" })
       .populate("userId", "name email image")
@@ -331,7 +345,7 @@ export const getJoinRequests = async (req, res) => {
 // Approve join request
 export const approveJoinRequest = async (req, res) => {
   try {
-    const { id: classId, userId } = req.params;
+    const { classId, userId } = req.params;
 
     const joinRequest = await JoinRequest.findOne({
       classId,
@@ -372,7 +386,7 @@ export const approveJoinRequest = async (req, res) => {
 // Reject join request
 export const rejectJoinRequest = async (req, res) => {
   try {
-    const { id: classId, userId } = req.params;
+    const { classId, userId } = req.params;
 
     const joinRequest = await JoinRequest.findOne({
       classId,
@@ -406,7 +420,7 @@ export const rejectJoinRequest = async (req, res) => {
 // Update class settings
 export const updateClassSettings = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const updates = req.body;
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,
@@ -425,7 +439,7 @@ export const updateClassSettings = async (req, res) => {
 // Get class statistics
 export const getClassStats = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     // Example: count members, moderators, assignments, etc.
     const classGroup = await Conversation.findById(classId);
     if (!classGroup) {
@@ -446,7 +460,7 @@ export const getClassStats = async (req, res) => {
 // Get class members
 export const getClassMembers = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const classGroup = await Conversation.findById(classId).populate(
       "group.members",
       "name email image"
@@ -463,7 +477,7 @@ export const getClassMembers = async (req, res) => {
 // Leave class
 export const leaveClass = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const userId = req.user._id;
     const classGroup = await Conversation.findById(classId);
     if (!classGroup) {
@@ -484,6 +498,105 @@ export const leaveClass = async (req, res) => {
     res.json({ message: "Left class successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+export const searchClasses = async (req, res) => {
+  try {
+    const { query, page = 1, limit = 10 } = req.query;
+    
+    // Validate query parameter
+    if (!query) {
+      return res.status(400).json({ error: "Query parameter is required" });
+    }
+
+    // Validate query characters
+    if (!query.match(/^[a-zA-Z0-9._%+-@ ]*$/)) {
+      return res.status(400).json({ error: "Invalid query characters" });
+    }
+
+    // Validate query length
+    if (query.length < 3) {
+      return res
+        .status(400)
+        .json({ error: "Search term must be at least 3 characters long" });
+    }
+
+    // Parse pagination parameters
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    if (pageNum < 1 || limitNum < 1) {
+      return res
+        .status(400)
+        .json({ error: "Page and limit must be positive integers" });
+    }
+
+    const escapedQuery = escapeRegex(query);
+    let searchCriteria = [];
+
+    // Search for public group conversations by name
+    searchCriteria.push({
+      "group.name": { $regex: escapedQuery, $options: "i" },
+      "group.is_group": true,
+      visibility: "public",
+    });
+
+    // Search for public conversations by participant names/emails
+    const users = await User.find({
+      $or: [
+        { name: { $regex: escapedQuery, $options: "i" } },
+        { email: { $regex: escapedQuery, $options: "i" } },
+      ],
+    }).select("_id");
+
+    if (users.length > 0) {
+      const userIds = users.map((user) => user._id);
+      searchCriteria.push({
+        participants: { $in: userIds },
+        visibility: "public",
+      });
+    }
+
+    // Combine search criteria with $or
+    const finalCriteria =
+      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
+
+    // Count total matching documents
+    const total = await Conversation.countDocuments(finalCriteria);
+
+    // Fetch paginated results
+    const conversations = await Conversation.find(finalCriteria)
+      .select("group.name group.image group.type")
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    if (!conversations.length) {
+      return res.status(404).json({ error: "No public conversations found" });
+    }
+
+    // Format response to include only name, image, and group type
+    const formattedConversations = conversations.map((conv) => ({
+      _id: conv._id,
+      name: conv.group?.name,
+      image: conv.group?.image,
+      groupType: conv.group?.type,
+    }));
+
+    res.status(200).json({
+      conversations: formattedConversations,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    console.error("Error searching conversations:", error);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
@@ -746,7 +859,7 @@ export const markAssignment = async (req, res) => {
 // Get class details
 export const getClassDetails = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
 
     const classGroup = await Conversation.findById(classId)
       .populate("group.admins", "name email image")
@@ -769,7 +882,7 @@ export const getClassDetails = async (req, res) => {
 // Update class details (name, image, etc.)
 export const updateClass = async (req, res) => {
   try {
-    const { id: classId } = req.params;
+    const { classId } = req.params;
     const updates = req.body;
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,

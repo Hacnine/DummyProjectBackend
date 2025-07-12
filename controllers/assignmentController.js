@@ -180,7 +180,7 @@ export const submitAssignment = async (req, res) => {
 // Get submissions for an assignment
 export const getSubmissions = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params 
     const { page = 1, limit = 10 } = req.query
 
     // For now, we'll get all submissions for a class
@@ -232,7 +232,11 @@ export const markAssignment = async (req, res) => {
     submission.markedAt = new Date()
 
     await submission.save()
-    await submission.populate(["userId", "markedBy"], "name email image")
+    await submission.populate([
+  { path: "userId", select: "name email image" },
+  { path: "markedBy", select: "name email image" },
+])
+
 
     // Notify student via socket
     if (req.io) {

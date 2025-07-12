@@ -151,7 +151,70 @@ const logout = async (req, res) => {
   }
 };
 
-const deleteUser = async (req, res) => {
+
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+export const searchUser = async (req, res) => {
+  try {
+    const { query, page = 1, limit = 10 } = req.query;
+
+    if (!query) {
+      return res.status(400).json({ error: "Query parameter is required" });
+    }
+
+    if (!query.match(/^[a-zA-Z0-9._%+-@]*$/)) {
+      return res.status(400).json({ error: "Invalid query characters" });
+    }
+
+    if (query.length < 3) {
+      return res.status(400).json({ error: "Search term must be at least 3 characters long" });
+    }
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    if (pageNum < 1 || limitNum < 1) {
+      return res.status(400).json({ error: "Page and limit must be positive integers" });
+    }
+
+    const escapedQuery = escapeRegex(query);
+    let searchCriteria;
+
+    if (query.includes("@")) {
+      searchCriteria = { email: { $regex: escapedQuery, $options: "i" } };
+    } else {
+      searchCriteria = { name: { $regex: escapedQuery, $options: "i" } };
+    }
+
+    // Count total matching documents
+    const total = await User.countDocuments(searchCriteria);
+
+    // Fetch paginated results
+    const users = await User.find(searchCriteria)
+      .select("name email image")
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    if (!users.length) {
+      return res.status(404).json({ error: "No users found" });
+    }
+
+    res.status(200).json({
+      users,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    console.error("Error searching users:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
 

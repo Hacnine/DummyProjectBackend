@@ -24,16 +24,16 @@ router.post("/create", requireClassAdmin, createAssignment)
 router.get("/class/:classId", getClassAssignments)
 router.get("/my-assignments", getUserAssignments)
 router.get("/:id", getAssignmentById)
-router.put("/:id", requireClassAdmin, updateAssignment)
-router.delete("/:id", requireClassAdmin, deleteAssignment)
+router.put("/:id",  updateAssignment)
+router.delete("/:id", deleteAssignment)
 
 // Assignment submission routes
 router.post("/class/:classId/submit", submitAssignment)
-router.get("/:id/submissions", requireClassAdmin, getSubmissions)
-router.put("/:submissionId/mark", requireClassAdmin, markAssignment)
+router.get("/:classId/submissions", requireClassAdmin, getSubmissions)
+router.put("/:classId/mark/:submissionId", requireClassAdmin, markAssignment)
 router.get("/submission/:submissionId/download", downloadSubmission)
 
 // Statistics routes
-router.get("/:id/stats", requireClassAdmin, getAssignmentStats)
+router.get("/:classId/stats", requireClassAdmin, getAssignmentStats)
 
 export default router
