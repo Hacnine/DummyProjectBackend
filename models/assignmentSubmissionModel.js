@@ -6,9 +6,11 @@ const assignmentSubmissionSchema = new Schema(
     classId: { type: Schema.Types.ObjectId, ref: "Conversation", required: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     assignmentTitle: { type: String, required: true },
+    assignmentDescription: { type: String, required: true, maxlength: 1000 },
+
     file: {
-      url: { type: String, required: true },
-      name: { type: String, required: true },
+      url: { type: String, required: false },
+      name: { type: String, required: false },
       size: { type: Number },
       type: { type: String },
     },
@@ -18,7 +20,7 @@ const assignmentSubmissionSchema = new Schema(
     feedback: { type: String },
     submittedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true },
+  { timestamps: false },
 )
 
 assignmentSubmissionSchema.index({ classId: 1, userId: 1 })

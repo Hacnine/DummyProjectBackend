@@ -1,3 +1,4 @@
+import mongoose from "mongoose"
 import AssignmentSubmission from "../models/assignmentSubmissionModel.js"
 import Conversation from "../models/conversationModel.js"
 
@@ -88,21 +89,54 @@ export const getAssignmentById = async (req, res) => {
   }
 }
 
-// Update assignment (for future use)
+// Update assignment
 export const updateAssignment = async (req, res) => {
   try {
-    const { id } = req.params
-    const updates = req.body
+    const { id } = req.params;
+    const { assignmentTitle, assignmentDescription, file, mark, feedback } = req.body;
 
-    // For now, just return success
-    res.json({
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid assignment ID" });
+    }
+
+    const assignment = await AssignmentSubmission.findById(id);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    // Check if user has permission (admin or teacher who marked)
+    const classGroup = await Conversation.findById(assignment.classId);
+    if (!classGroup) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    // Define allowed updates
+    const updates = {};
+    if (assignmentTitle) updates.assignmentTitle = assignmentTitle;
+    if (assignmentDescription) updates.assignmentDescription = assignmentDescription;
+    if (file) updates.file = file;
+
+    const updatedAssignment = await AssignmentSubmission.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
       message: "Assignment updated successfully",
-      assignment: { id, ...updates },
-    })
+      data: updatedAssignment
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
+    console.error('Error in updateAssignment:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: "Server error", 
+      error: error.message 
+    });
   }
-}
+};
 
 // Delete assignment
 export const deleteAssignment = async (req, res) => {
@@ -135,11 +169,11 @@ export const deleteAssignment = async (req, res) => {
 export const submitAssignment = async (req, res) => {
   try {
     const { classId } = req.params
-    const { assignmentTitle, file } = req.body
+    const { assignmentTitle, assignmentDescription, file } = req.body
     const userId = req.user._id
 
-    if (!assignmentTitle || !file) {
-      return res.status(400).json({ message: "Assignment title and file are required" })
+    if (!assignmentTitle || !assignmentDescription) {
+      return res.status(400).json({ message: "Assignment title and assignment description are required" })
     }
 
     // Check if user is a member of the class
@@ -152,6 +186,7 @@ export const submitAssignment = async (req, res) => {
       classId,
       userId,
       assignmentTitle,
+      assignmentDescription,
       file,
     })
 
