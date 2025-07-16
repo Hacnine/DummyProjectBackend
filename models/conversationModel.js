@@ -16,7 +16,7 @@ const conversationSchema = new Schema(
     visibility: {
       type: String,
       enum: ["public", "private"],
-      default: "private",
+      default: "public",
       required: true,
     },
     group: {
@@ -27,6 +27,7 @@ const conversationSchema = new Schema(
         default: "group",
       },
       name: { type: String },
+      intro: { type: String },
       image: { type: String }, // Group profile picture
       admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
 
@@ -38,7 +39,6 @@ const conversationSchema = new Schema(
       },
       fileSendingAllowed: { type: Boolean, default: true },
       moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
-      members: [{ type: Schema.Types.ObjectId, ref: "User" }],
       startTime: { type: String, default: "09:00" }, // e.g., "09:00", "14:30"
       cutoffTime: { type: String, default: "09:15" }, // e.g., "09:15", "14:45"
       checkInterval: { type: Number, default: 15 }, // e.g., 15 for 15 minutes

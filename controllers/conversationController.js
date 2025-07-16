@@ -1,4 +1,6 @@
 import Conversation from "../models/conversationModel.js";
+import User from "../models/userModel.js";
+import mongoose from "mongoose";
 
 const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
@@ -80,19 +82,176 @@ const getAllConversations = async (req, res) => {
   }
 };
 
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+export const searchGroups = async (req, res) => {
+  try {
+    const { query, page = 1, limit = 10 } = req.query;
+    const currentUserId = req.user._id;
+
+    // Validate query parameter
+    if (!query) {
+      return res.status(400).json({ error: "Query parameter is required" });
+    }
+
+    if (!query.match(/^[a-zA-Z0-9._%+-@ ]*$/)) {
+      return res.status(400).json({ error: "Invalid query characters" });
+    }
+
+    // Validate pagination parameters
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    if (pageNum < 1 || limitNum < 1) {
+      return res
+        .status(400)
+        .json({ error: "Page and limit must be positive integers" });
+    }
+
+    const escapedQuery = escapeRegex(query);
+    let searchCriteria = [];
+
+    // Search for public group conversations by name
+    searchCriteria.push({
+      "group.name": { $regex: escapedQuery, $options: "i" },
+      "group.is_group": true,
+      "group.type": "group",
+      visibility: "public",
+    });
+
+    // Search for users by name or email
+    const users = await User.find({
+      $or: [
+        { name: { $regex: escapedQuery, $options: "i" } },
+        { email: { $regex: escapedQuery, $options: "i" } },
+      ],
+    }).select("_id");
+
+    // Validate user IDs
+    if (users.length > 0) {
+      const userIds = users
+        .map((user) => user._id)
+        .filter((id) => mongoose.isValidObjectId(id));
+
+      if (userIds.length > 0) {
+        searchCriteria.push({
+          participants: { $in: userIds },
+          "group.is_group": true,
+          "group.type": "group",
+          visibility: "public",
+        });
+      } else {
+        console.warn("No valid user IDs found for query:", query);
+      }
+    }
+
+    // If no search criteria, return empty result
+    const finalCriteria =
+      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
+
+    const total = await Conversation.countDocuments(finalCriteria);
+
+    const conversations = await Conversation.find(finalCriteria)
+      .select("group.name group.image group.intro group.type participants")
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    if (!conversations.length) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    const formattedGroups = conversations.map((conv) => {
+      const alreadyMember = conv.participants?.some(
+        (participantId) => participantId.toString() === currentUserId.toString()
+      );
+
+      return {
+        _id: conv._id.toString(),
+        name: conv.group?.name || "Unnamed Group",
+        image: conv.group?.image || null,
+        intro: conv.group?.intro || "N/A",
+        type: conv.group?.type || "group",
+        members: conv.participants?.length || 0, // Use participants length
+        status: alreadyMember ? "active" : "inactive",
+        alreadyMember: !!alreadyMember,
+      };
+    });
+
+    res.status(200).json({
+      groups: formattedGroups,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    console.error("Error searching groups:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const createGroup = async (req, res) => {
+  try {
+    const { name, intro, image, visibility = "public" } = req.body;
+    const creatorId = req.user._id;
+
+    // Validate inputs
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Group name is required" });
+    }
+    if (!["public", "private"].includes(visibility)) {
+      return res
+        .status(400)
+        .json({ message: "Visibility must be 'public' or 'private'" });
+    }
+
+    // Create new group conversation
+    const newGroup = new Conversation({
+      participants: [creatorId], // Initialize with creator
+      group: {
+        is_group: true,
+        type: "group",
+        name: name.trim(),
+        intro: intro ? intro.trim() : undefined,
+        image: image ? image.trim() : undefined,
+        admins: [creatorId],
+      },
+      visibility,
+    });
+
+    // Save and populate
+    await newGroup.save();
+    await newGroup.populate("group.admins", "name email image");
+    await newGroup.populate("participants", "name email image"); // Populate participants
+
+    res.status(201).json({
+      message: "Group created successfully",
+      group: newGroup,
+    });
+  } catch (error) {
+    console.error("Error creating group:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
 const getConversationById = async (req, res) => {
   const { chatId } = req.params;
   const { userId } = req.query;
 
   //  Validate input parameters
   if (!chatId || !userId) {
-    return res.status(400).json({ message:  "Invalid chat ID" });
+    return res.status(400).json({ message: "Invalid chat ID" });
   }
 
   try {
     //  Fetch conversation and populate participants
     const conversation = await Conversation.findById(chatId)
-      .select("-themeIndex -updatedAt -createdAt -unread_messages -last_message")
+      .select(
+        "-themeIndex -updatedAt -createdAt -unread_messages -last_message"
+      )
       .populate("participants", "name image")
       .lean();
 
@@ -102,10 +261,17 @@ const getConversationById = async (req, res) => {
     }
 
     //  Check if `userId` is part of the conversation
-    const isParticipant = conversation.participants.some((participant) => participant._id.toString() === userId);
-    
+    const isParticipant = conversation.participants.some(
+      (participant) => participant._id.toString() === userId
+    );
+
     if (!isParticipant) {
-      return res.status(403).json({ message: "Access denied: You are not a participant in this conversation" });
+      return res
+        .status(403)
+        .json({
+          message:
+            "Access denied: You are not a participant in this conversation",
+        });
     }
 
     //  Format response
@@ -196,6 +362,7 @@ const updateMessageRequestStatus = async (req, res) => {
 };
 
 
+
 export const updateConversationThemeIndex = async (req, res) => {
   try {
     const { themeIndex } = req.body;
@@ -206,13 +373,16 @@ export const updateConversationThemeIndex = async (req, res) => {
       { themeIndex },
       { new: true }
     );
-    if (!conversation) return res.status(404).json({ message: "Conversation not found" });
-    res.json({ message: "Theme index updated", themeIndex: conversation.themeIndex });
+    if (!conversation)
+      return res.status(404).json({ message: "Conversation not found" });
+    res.json({
+      message: "Theme index updated",
+      themeIndex: conversation.themeIndex,
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 export {
   createConversation,

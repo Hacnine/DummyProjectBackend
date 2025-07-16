@@ -168,9 +168,7 @@ export const searchUser = async (req, res) => {
       return res.status(400).json({ error: "Invalid query characters" });
     }
 
-    if (query.length < 3) {
-      return res.status(400).json({ error: "Search term must be at least 3 characters long" });
-    }
+
 
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
@@ -199,7 +197,7 @@ export const searchUser = async (req, res) => {
       .lean();
 
     if (!users.length) {
-      return res.status(404).json({ error: "No users found" });
+      return res.status(404).json({ message: "No users found" });
     }
 
     res.status(200).json({

@@ -267,19 +267,19 @@ export const requestJoinClass = async (req, res) => {
   try {
     const { classId } = req.params;
     const userId = req.user._id;
-console.log(userId)
+
+
     // Check if class exists
-    const classGroup = await Conversation.findById(classId);
+    const conversation = await Conversation.findById(classId);
     if (
-      !classGroup ||
-      !classGroup.group.is_group ||
-      classGroup.group.type !== "classroom"
+      !conversation ||
+      !conversation.group.is_group
     ) {
       return res.status(404).json({ message: "Class not found" });
     }
 
     // Check if already a member
-    if (classGroup.group.members.includes(userId)) {
+    if (conversation.group.members.includes(userId)) {
       return res
         .status(400)
         .json({ message: "You are already a member of this class" });
@@ -311,12 +311,12 @@ console.log(userId)
     await joinRequest.populate("userId", "name email image");
 
     // Notify class admins
-    classGroup.group.admins.forEach((adminId) => {
-      req.io.to(adminId.toString()).emit("joinRequestReceived", {
-        classId,
-        request: joinRequest,
-      });
-    });
+    // conversation.group.admins.forEach((adminId) => {
+    //   req.io.to(adminId.toString()).emit("joinRequestReceived", {
+    //     classId,
+    //     request: joinRequest,
+    //   });
+    // });
 
     res.json({
       message: "Join request sent successfully",
@@ -508,25 +508,16 @@ const escapeRegex = (string) => {
 export const searchClasses = async (req, res) => {
   try {
     const { query, page = 1, limit = 10 } = req.query;
-    
-    // Validate query parameter
+    const currentUserId = req.user._id;
+
     if (!query) {
       return res.status(400).json({ error: "Query parameter is required" });
     }
 
-    // Validate query characters
     if (!query.match(/^[a-zA-Z0-9._%+-@ ]*$/)) {
       return res.status(400).json({ error: "Invalid query characters" });
     }
 
-    // Validate query length
-    if (query.length < 3) {
-      return res
-        .status(400)
-        .json({ error: "Search term must be at least 3 characters long" });
-    }
-
-    // Parse pagination parameters
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
@@ -543,6 +534,7 @@ export const searchClasses = async (req, res) => {
     searchCriteria.push({
       "group.name": { $regex: escapedQuery, $options: "i" },
       "group.is_group": true,
+      "group.type": "class",
       visibility: "public",
     });
 
@@ -562,16 +554,13 @@ export const searchClasses = async (req, res) => {
       });
     }
 
-    // Combine search criteria with $or
     const finalCriteria =
       searchCriteria.length > 0 ? { $or: searchCriteria } : {};
 
-    // Count total matching documents
     const total = await Conversation.countDocuments(finalCriteria);
 
-    // Fetch paginated results
     const conversations = await Conversation.find(finalCriteria)
-      .select("group.name group.image group.type")
+      .select("group.name group.image group.type group.members")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
@@ -580,13 +569,19 @@ export const searchClasses = async (req, res) => {
       return res.status(404).json({ error: "No public conversations found" });
     }
 
-    // Format response to include only name, image, and group type
-    const formattedConversations = conversations.map((conv) => ({
-      _id: conv._id,
-      name: conv.group?.name,
-      image: conv.group?.image,
-      groupType: conv.group?.type,
-    }));
+    const formattedConversations = conversations.map((conv) => {
+      const alreadyMember = conv.group?.members?.some(
+        (memberId) => memberId.toString() === currentUserId.toString()
+      );
+
+      return {
+        _id: conv._id,
+        name: conv.group?.name,
+        image: conv.group?.image,
+        groupType: conv.group?.type,
+        alreadyMember: !!alreadyMember,
+      };
+    });
 
     res.status(200).json({
       conversations: formattedConversations,
@@ -599,6 +594,7 @@ export const searchClasses = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+
 
 // Get all classes for a user
 export const getUserClasses = async (req, res) => {
