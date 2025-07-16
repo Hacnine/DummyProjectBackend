@@ -1,4 +1,5 @@
 import Conversation from "../models/conversationModel.js";
+import JoinRequest from "../models/joinRequestModel.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
 
@@ -163,6 +164,21 @@ export const searchGroups = async (req, res) => {
       return res.status(404).json({ message: "Not found" });
     }
 
+    // Fetch pending join requests for the current user
+    const conversationIds = conversations.map((conv) => conv._id);
+    const pendingRequests = await JoinRequest.find({
+      userId: currentUserId,
+      classId: { $in: conversationIds },
+      status: "pending",
+    })
+      .select("classId")
+      .lean();
+
+    // Create a Set of conversation IDs with pending requests for O(1) lookup
+    const pendingRequestIds = new Set(
+      pendingRequests.map((req) => req.classId.toString())
+    );
+
     const formattedGroups = conversations.map((conv) => {
       const alreadyMember = conv.participants?.some(
         (participantId) => participantId.toString() === currentUserId.toString()
@@ -174,9 +190,10 @@ export const searchGroups = async (req, res) => {
         image: conv.group?.image || null,
         intro: conv.group?.intro || "N/A",
         type: conv.group?.type || "group",
-        members: conv.participants?.length || 0, // Use participants length
+        members: conv.participants?.length || 0,
         status: alreadyMember ? "active" : "inactive",
         alreadyMember: !!alreadyMember,
+        hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
       };
     });
 

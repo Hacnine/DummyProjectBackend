@@ -7,6 +7,7 @@ import User from "../models/userModel.js";
 import { scheduleSessionCronForClass } from "../utils/cronJobs.js";
 import { isValidTimeFormat } from "../utils/timeformatValidation.js";
 import moment from "moment";
+import mongoose from "mongoose";
 
 export const createClass = async (req, res) => {
   try {
@@ -55,7 +56,7 @@ export const createClass = async (req, res) => {
     }
 
     const newClass = new Conversation({
-      // participants: [teacherId],
+      participants: [teacherId],
       group: {
         is_group: true,
         type: "classroom",
@@ -66,7 +67,6 @@ export const createClass = async (req, res) => {
         selectedDays,
         admins: [teacherId],
         // moderators: [],
-        members: [teacherId],
         // fileSendingAllowed: false,
       },
       visibility: "private",
@@ -100,28 +100,30 @@ export const deleteClass = async (req, res) => {
       .json({ message: "Failed to delete class", error: error.message });
   }
 };
+
 // Add moderator to class
 export const addModerator = async (req, res) => {
   try {
     const { classId } = req.params;
     const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+    // Validate inputs
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
     }
 
     const classGroup = req.classGroup;
 
     // Check if user is already a moderator
-    if (classGroup.group.moderators.includes(userId)) {
+    if (classGroup.group.moderators.some((mod) => mod.toString() === userId)) {
       return res.status(400).json({ message: "User is already a moderator" });
     }
 
-    // Check if user is a member of the class
-    if (!classGroup.group.members.includes(userId)) {
+    // Check if user is a participant of the class
+    if (!classGroup.participants.some((participant) => participant.toString() === userId)) {
       return res
         .status(400)
-        .json({ message: "User must be a class member first" });
+        .json({ message: "User must be a class participant first" });
     }
 
     classGroup.group.moderators.push(userId);
@@ -134,24 +136,25 @@ export const addModerator = async (req, res) => {
       moderators: classGroup.group.moderators,
     });
   } catch (error) {
+    console.error("Error adding moderator:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Remove moderator from class
 export const removeModerator = async (req, res) => {
   try {
     const { classId } = req.params;
     const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+    // Validate inputs
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
     }
 
     const classGroup = req.classGroup;
 
     // Check if user is a moderator
-    if (!classGroup.group.moderators.includes(userId)) {
+    if (!classGroup.group.moderators.some((mod) => mod.toString() === userId)) {
       return res.status(400).json({ message: "User is not a moderator" });
     }
 
@@ -167,25 +170,26 @@ export const removeModerator = async (req, res) => {
       moderators: classGroup.group.moderators,
     });
   } catch (error) {
+    console.error("Error removing moderator:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Add member to class
 export const addMember = async (req, res) => {
   try {
     const { classId } = req.params;
     const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+    // Validate inputs
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
     }
 
     const classGroup = req.classGroup;
 
-    // Check if user is already a member
-    if (classGroup.group.members.includes(userId)) {
-      return res.status(400).json({ message: "User is already a member" });
+    // Check if user is already a participant
+    if (classGroup.participants.some((participant) => participant.toString() === userId)) {
+      return res.status(400).json({ message: "User is already a participant" });
     }
 
     // Check if user exists
@@ -194,7 +198,6 @@ export const addMember = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    classGroup.group.members.push(userId);
     classGroup.participants.push(userId);
     await classGroup.save();
 
@@ -204,42 +207,40 @@ export const addMember = async (req, res) => {
       { status: "approved", processedBy: req.user._id, processedAt: new Date() }
     );
 
-    await classGroup.populate("group.members", "name email image");
+    await classGroup.populate("participants", "name email image");
 
     res.json({
       message: "Member added successfully",
-      members: classGroup.group.members,
+      participants: classGroup.participants,
     });
   } catch (error) {
+    console.error("Error adding member:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Remove member from class
 export const removeMember = async (req, res) => {
   try {
     const { classId } = req.params;
     const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+    // Validate inputs
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
     }
 
     const classGroup = req.classGroup;
 
-    // Check if user is a member
-    if (!classGroup.group.members.includes(userId)) {
-      return res.status(400).json({ message: "User is not a member" });
+    // Check if user is a participant
+    if (!classGroup.participants.some((participant) => participant.toString() === userId)) {
+      return res.status(400).json({ message: "User is not a participant" });
     }
 
     // Cannot remove admin
-    if (classGroup.group.admins.includes(userId)) {
+    if (classGroup.group.admins.some((admin) => admin.toString() === userId)) {
       return res.status(400).json({ message: "Cannot remove class admin" });
     }
 
-    classGroup.group.members = classGroup.group.members.filter(
-      (member) => member.toString() !== userId
-    );
     classGroup.participants = classGroup.participants.filter(
       (participant) => participant.toString() !== userId
     );
@@ -251,43 +252,43 @@ export const removeMember = async (req, res) => {
 
     await classGroup.save();
 
-    await classGroup.populate("group.members", "name email image");
+    await classGroup.populate("participants", "name email image");
 
     res.json({
       message: "Member removed successfully",
-      members: classGroup.group.members,
+      participants: classGroup.participants,
     });
   } catch (error) {
+    console.error("Error removing member:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Request to join class
 export const requestJoinClass = async (req, res) => {
   try {
     const { classId } = req.params;
     const userId = req.user._id;
 
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
 
     // Check if class exists
     const conversation = await Conversation.findById(classId);
-    if (
-      !conversation ||
-      !conversation.group.is_group
-    ) {
+    if (!conversation || !conversation.group.is_group) {
       return res.status(404).json({ message: "Class not found" });
     }
 
-    // Check if already a member
-    if (conversation.group.members.includes(userId)) {
+    // Check if already a participant
+    if (conversation.participants.some((participant) => participant.toString() === userId)) {
       return res
         .status(400)
-        .json({ message: "You are already a member of this class" });
+        .json({ message: "You are already a participant of this class" });
     }
 
     // Check if request already exists
     const existingRequest = await JoinRequest.findOne({ classId, userId });
-    console.log(existingRequest)
     if (existingRequest) {
       if (existingRequest.status === "pending") {
         return res
@@ -310,7 +311,7 @@ export const requestJoinClass = async (req, res) => {
 
     await joinRequest.populate("userId", "name email image");
 
-    // Notify class admins
+    // Notify class admins (commented out as in original)
     // conversation.group.admins.forEach((adminId) => {
     //   req.io.to(adminId.toString()).emit("joinRequestReceived", {
     //     classId,
@@ -323,14 +324,19 @@ export const requestJoinClass = async (req, res) => {
       request: joinRequest,
     });
   } catch (error) {
+    console.error("Error requesting to join class:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get pending join requests for a class
 export const getJoinRequests = async (req, res) => {
   try {
     const { classId } = req.params;
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
 
     const requests = await JoinRequest.find({ classId, status: "pending" })
       .populate("userId", "name email image")
@@ -338,14 +344,19 @@ export const getJoinRequests = async (req, res) => {
 
     res.json({ requests });
   } catch (error) {
+    console.error("Error fetching join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Approve join request
 export const approveJoinRequest = async (req, res) => {
   try {
     const { classId, userId } = req.params;
+
+    // Validate inputs
+    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    }
 
     const joinRequest = await JoinRequest.findOne({
       classId,
@@ -358,7 +369,10 @@ export const approveJoinRequest = async (req, res) => {
 
     // Add user to class
     const classGroup = req.classGroup;
-    classGroup.group.members.push(userId);
+    if (classGroup.participants.some((participant) => participant.toString() === userId)) {
+      return res.status(400).json({ message: "User is already a participant" });
+    }
+
     classGroup.participants.push(userId);
     await classGroup.save();
 
@@ -374,19 +388,27 @@ export const approveJoinRequest = async (req, res) => {
       className: classGroup.group.name,
     });
 
+    await classGroup.populate("participants", "name email image");
+
     res.json({
       message: "Join request approved successfully",
       request: joinRequest,
+      participants: classGroup.participants,
     });
   } catch (error) {
+    console.error("Error approving join request:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Reject join request
 export const rejectJoinRequest = async (req, res) => {
   try {
     const { classId, userId } = req.params;
+
+    // Validate inputs
+    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    }
 
     const joinRequest = await JoinRequest.findOne({
       classId,
@@ -413,90 +435,137 @@ export const rejectJoinRequest = async (req, res) => {
       request: joinRequest,
     });
   } catch (error) {
+    console.error("Error rejecting join request:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Update class settings
 export const updateClassSettings = async (req, res) => {
   try {
     const { classId } = req.params;
     const updates = req.body;
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
+    // Validate updates (basic example, adjust based on your schema)
+    const allowedFields = ["classType", "fileSendingAllowed", "startTime", "cutoffTime", "checkInterval", "selectedDays"];
+    const updateKeys = Object.keys(updates);
+    if (updateKeys.length === 0 || !updateKeys.every((key) => allowedFields.includes(key))) {
+      return res.status(400).json({ message: "Invalid settings provided" });
+    }
+
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,
-      { $set: { "group.settings": updates } },
+      { $set: { "group": { ...req.classGroup.group, ...updates } } },
       { new: true }
     );
     if (!classGroup) {
       return res.status(404).json({ message: "Class not found" });
     }
+
     res.json({ message: "Class settings updated", class: classGroup });
   } catch (error) {
+    console.error("Error updating class settings:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get class statistics
+
 export const getClassStats = async (req, res) => {
   try {
     const { classId } = req.params;
-    // Example: count members, moderators, assignments, etc.
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
     const classGroup = await Conversation.findById(classId);
     if (!classGroup) {
       return res.status(404).json({ message: "Class not found" });
     }
+
     const stats = {
-      members: classGroup.group.members.length,
+      participants: classGroup.participants.length, // Updated from members
       moderators: classGroup.group.moderators.length,
       admins: classGroup.group.admins.length,
       // Add more stats as needed
     };
+
     res.json({ stats });
   } catch (error) {
+    console.error("Error fetching class stats:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get class members
 export const getClassMembers = async (req, res) => {
   try {
     const { classId } = req.params;
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
     const classGroup = await Conversation.findById(classId).populate(
-      "group.members",
+      "participants",
       "name email image"
     );
     if (!classGroup) {
       return res.status(404).json({ message: "Class not found" });
     }
-    res.json({ members: classGroup.group.members });
+
+    res.json({ participants: classGroup.participants });
   } catch (error) {
+    console.error("Error fetching class members:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Leave class
 export const leaveClass = async (req, res) => {
   try {
     const { classId } = req.params;
     const userId = req.user._id;
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
     const classGroup = await Conversation.findById(classId);
     if (!classGroup) {
       return res.status(404).json({ message: "Class not found" });
     }
-    // Remove user from members and participants
-    classGroup.group.members = classGroup.group.members.filter(
-      (member) => member.toString() !== userId.toString()
-    );
+
+    // Check if user is a participant
+    if (!classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
+      return res.status(400).json({ message: "User is not a participant of this class" });
+    }
+
+    // Prevent admin from leaving (optional, adjust based on requirements)
+    if (classGroup.group.admins.some((admin) => admin.toString() === userId.toString())) {
+      return res.status(400).json({ message: "Admins cannot leave the class" });
+    }
+
+    // Remove user from participants
     classGroup.participants = classGroup.participants.filter(
       (participant) => participant.toString() !== userId.toString()
     );
+
     // Remove from moderators if present
     classGroup.group.moderators = classGroup.group.moderators.filter(
       (mod) => mod.toString() !== userId.toString()
     );
+
     await classGroup.save();
+
     res.json({ message: "Left class successfully" });
   } catch (error) {
+    console.error("Error leaving class:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -505,11 +574,13 @@ const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
+
 export const searchClasses = async (req, res) => {
   try {
     const { query, page = 1, limit = 10 } = req.query;
     const currentUserId = req.user._id;
 
+    // Validate query parameter
     if (!query) {
       return res.status(400).json({ error: "Query parameter is required" });
     }
@@ -518,6 +589,7 @@ export const searchClasses = async (req, res) => {
       return res.status(400).json({ error: "Invalid query characters" });
     }
 
+    // Validate pagination parameters
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
@@ -530,11 +602,11 @@ export const searchClasses = async (req, res) => {
     const escapedQuery = escapeRegex(query);
     let searchCriteria = [];
 
-    // Search for public group conversations by name
+    // Search for public class conversations by name
     searchCriteria.push({
       "group.name": { $regex: escapedQuery, $options: "i" },
       "group.is_group": true,
-      "group.type": "class",
+      "group.type": "classroom", // Updated from "class" to match schema
       visibility: "public",
     });
 
@@ -547,39 +619,43 @@ export const searchClasses = async (req, res) => {
     }).select("_id");
 
     if (users.length > 0) {
-      const userIds = users.map((user) => user._id);
-      searchCriteria.push({
-        participants: { $in: userIds },
-        visibility: "public",
-      });
+      const userIds = users.map((user) => user._id).filter((id) => mongoose.isValidObjectId(id));
+      if (userIds.length > 0) {
+        searchCriteria.push({
+          participants: { $in: userIds },
+          "group.is_group": true,
+          "group.type": "classroom", // Updated from "class"
+          visibility: "public",
+        });
+      }
     }
 
-    const finalCriteria =
-      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
+    const finalCriteria = searchCriteria.length > 0 ? { $or: searchCriteria } : {};
 
     const total = await Conversation.countDocuments(finalCriteria);
 
     const conversations = await Conversation.find(finalCriteria)
-      .select("group.name group.image group.type group.members")
+      .select("group.name group.image group.type participants")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
 
     if (!conversations.length) {
-      return res.status(404).json({ error: "No public conversations found" });
+      return res.status(404).json({ error: "No public classes found" });
     }
 
     const formattedConversations = conversations.map((conv) => {
-      const alreadyMember = conv.group?.members?.some(
-        (memberId) => memberId.toString() === currentUserId.toString()
+      const alreadyMember = conv.participants?.some(
+        (participantId) => participantId.toString() === currentUserId.toString()
       );
 
       return {
-        _id: conv._id,
-        name: conv.group?.name,
-        image: conv.group?.image,
-        groupType: conv.group?.type,
+        _id: conv._id.toString(), // Ensure string ID for frontend
+        name: conv.group?.name || "Unnamed Class",
+        image: conv.group?.image || null,
+        groupType: conv.group?.type || "classroom",
         alreadyMember: !!alreadyMember,
+        participantCount: conv.participants?.length || 0, // Added for clarity
       };
     });
 
@@ -590,35 +666,46 @@ export const searchClasses = async (req, res) => {
       totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
-    console.error("Error searching conversations:", error);
+    console.error("Error searching classes:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-
-// Get all classes for a user
 export const getUserClasses = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const user = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
     const classes = await Conversation.find({
       "group.is_group": true,
       "group.type": "classroom",
-      "group.members": userId,
+      participants: userId, // Updated from group.members
     }).populate("group.admins", "name email image");
+
     res.json({ classes });
   } catch (error) {
+    console.error("Error fetching user classes:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-// Log attendance when user enters class
+
 export const logAttendance = async (req, res) => {
   try {
     const { id: classId } = req.params;
     const userId = req.user._id;
 
-    // Check if user is a member of the class
+    // Validate inputs
+    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    }
+
+    // Check if user is a participant of the class
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
+    if (!classGroup || !classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -651,15 +738,20 @@ export const logAttendance = async (req, res) => {
       attendance: attendanceLog,
     });
   } catch (error) {
+    console.error("Error logging attendance:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Start alertness check session
 export const startAlertnessSession = async (req, res) => {
   try {
     const { id: classId } = req.params;
     const { duration = 30000 } = req.body; // Default 30 seconds
+
+    // Validate inputs
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
 
     const classGroup = req.classGroup;
 
@@ -678,7 +770,7 @@ export const startAlertnessSession = async (req, res) => {
       classId,
       startedBy: req.user._id,
       duration,
-      totalParticipants: classGroup.group.members.length,
+      totalParticipants: classGroup.participants.length, // Updated from group.members
     });
 
     await session.save();
@@ -690,8 +782,7 @@ export const startAlertnessSession = async (req, res) => {
         sessionToEnd.isActive = false;
         sessionToEnd.endTime = new Date();
         sessionToEnd.responseRate =
-          (sessionToEnd.responses.length / sessionToEnd.totalParticipants) *
-          100;
+          (sessionToEnd.responses.length / sessionToEnd.totalParticipants) * 100;
         await sessionToEnd.save();
 
         // Notify class about session end
@@ -702,7 +793,7 @@ export const startAlertnessSession = async (req, res) => {
       }
     }, duration);
 
-    // Notify all class members
+    // Notify all class participants
     req.io.to(classId).emit("alertnessSessionStarted", {
       sessionId: session._id,
       duration,
@@ -714,6 +805,7 @@ export const startAlertnessSession = async (req, res) => {
       session,
     });
   } catch (error) {
+    console.error("Error starting alertness session:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -766,15 +858,19 @@ export const submitAssignment = async (req, res) => {
     const { assignmentTitle, file } = req.body;
     const userId = req.user._id;
 
+    // Validate inputs
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
     if (!assignmentTitle || !file) {
       return res
         .status(400)
         .json({ message: "Assignment title and file are required" });
     }
 
-    // Check if user is a member of the class
+    // Check if user is a participant of the class
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
+    if (!classGroup || !classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -801,16 +897,20 @@ export const submitAssignment = async (req, res) => {
       submission,
     });
   } catch (error) {
+    console.error("Error submitting assignment:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Mark assignment
 export const markAssignment = async (req, res) => {
   try {
     const { submissionId } = req.params;
     const { mark, feedback } = req.body;
 
+    // Validate inputs
+    if (!mongoose.isValidObjectId(submissionId)) {
+      return res.status(400).json({ message: "Valid Submission ID is required" });
+    }
     if (mark === undefined || mark < 0 || mark > 100) {
       return res
         .status(400)
@@ -824,7 +924,7 @@ export const markAssignment = async (req, res) => {
 
     // Check if user is admin of the class
     const classGroup = await Conversation.findById(submission.classId);
-    if (!classGroup.group.admins.includes(req.user._id)) {
+    if (!classGroup || !classGroup.group.admins.some((admin) => admin.toString() === req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -848,19 +948,24 @@ export const markAssignment = async (req, res) => {
       submission,
     });
   } catch (error) {
+    console.error("Error marking assignment:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get class details
 export const getClassDetails = async (req, res) => {
   try {
     const { classId } = req.params;
 
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
     const classGroup = await Conversation.findById(classId)
       .populate("group.admins", "name email image")
       .populate("group.moderators", "name email image")
-      .populate("group.members", "name email image");
+      .populate("participants", "name email image"); // Updated from group.members
 
     if (
       !classGroup ||
@@ -872,35 +977,51 @@ export const getClassDetails = async (req, res) => {
 
     res.json({ class: classGroup });
   } catch (error) {
+    console.error("Error fetching class details:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-// Update class details (name, image, etc.)
+
 export const updateClass = async (req, res) => {
   try {
     const { classId } = req.params;
     const updates = req.body;
+
+    // Validate classId
+    if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ message: "Valid Class ID is required" });
+    }
+
+    // Validate updates
+    const allowedFields = ["name", "image", "classType", "fileSendingAllowed", "startTime", "cutoffTime", "checkInterval", "selectedDays"];
+    const updateKeys = Object.keys(updates);
+    if (updateKeys.length === 0 || !updateKeys.every((key) => allowedFields.includes(key))) {
+      return res.status(400).json({ message: "Invalid update fields provided" });
+    }
+
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,
       {
         $set: {
-          "group.name": updates.name,
-          "group.image": updates.image,
-          "group.classType": updates.classType,
-          // Add more fields as needed
+          "group": {
+            ...req.classGroup.group, // Preserve existing group fields
+            ...updates, // Apply updates
+          },
         },
       },
       { new: true }
     )
       .populate("group.admins", "name email image")
       .populate("group.moderators", "name email image")
-      .populate("group.members", "name email image");
+      .populate("participants", "name email image"); // Updated from group.members
 
     if (!classGroup) {
       return res.status(404).json({ message: "Class not found" });
     }
+
     res.json({ message: "Class updated successfully", class: classGroup });
   } catch (error) {
+    console.error("Error updating class:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
