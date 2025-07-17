@@ -64,92 +64,113 @@ const register = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
-
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body; // Renamed to avoid conflict
     if (!email || !password) {
       return res
         .status(400)
         .json({ message: "Email and password are required." });
     }
-    const user = await userModel.findOne({ email });
+
+    // Include all fields except device_tokens; password is needed for verification
+    const user = await userModel.findOne({ email }).select(
+      "name email gender image cover_image bio role friends blocked_users friend_requests is_active last_seen themeIndex fileSendingAllowed notification_settings two_factor_auth password"
+    );
     if (!user) {
-      // Email not found
       return res
         .status(401)
         .json({ message: "Email or password is incorrect." });
     }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      // Password incorrect
       return res
         .status(401)
         .json({ message: "Email or password is incorrect." });
     }
 
-    if (user && (await bcrypt.compare(password, user.password))) {
-      // Clear previous cookies
-      res.clearCookie("access_token", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "None",
-      });
-      res.clearCookie("refresh_token", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "None",
-      });
+    // Clear previous tokens
+    res.clearCookie("access_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+    });
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+    });
+    await redisClient.del(`access_token_${user._id}`);
+    await redisClient.del(`refresh_token_${user._id}`);
 
-      // Remove old tokens from Redis
-      await redisClient.del(`access_token_${user._id}`);
-      await redisClient.del(`refresh_token_${user._id}`);
+    // Generate new tokens
+    const accessToken = jwt.sign(
+      { id: user._id },
+      process.env.ACCESS_TOKEN_SECRET,
+      { expiresIn: "1d" }
+    );
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
 
-      // Generate new tokens
+    // Store tokens
+    await storeToken(
+      res,
+      { access: accessToken, refresh: refreshToken },
+      user._id.toString()
+    );
 
-      const accessToken = jwt.sign(
-        { id: user._id },
-        process.env.ACCESS_TOKEN_SECRET,
-        { expiresIn: "7d" }
-      );
-      const refreshToken = jwt.sign(
-        { id: user._id },
-        process.env.REFRESH_TOKEN_SECRET,
-        { expiresIn: "7d" }
-      );
-      const userId = user._id.toString();
-      await storeToken(
-        res,
-        { access: accessToken, refresh: refreshToken },
-        userId
-      );
-
-      // Emit the loggedUsersUpdate event
+    // Emit Socket.IO event (if applicable)
+    if (req.io) {
       req.io.emit(
         "loggedUsersUpdate",
         Array.from(onlineUsers.values()).map((u) => u.userData)
       );
-      res.status(200).json({ message: "Login successful", user, accessToken });
-    } else {
-      res.status(401).json({ message: "Email or Password is incorrect." });
     }
+
+    // Remove password from user object before sending
+    const { password:FaulPass, ...safeUser } = user.toObject();
+    res.status(200).json({ message: "Login successful", user: safeUser });
   } catch (error) {
+    console.error("Login error:", error.message);
     res
       .status(500)
       .json({ message: "Internal server error", error: error.message });
   }
 };
+
+
 const logout = async (req, res) => {
   try {
-    await removeToken(res, req); // Ensure the function is called with both `res` and `req`
+    const { access_token, refresh_token } = await getToken(req);
 
-    res.status(200).json({ message: "Logged out successfully." });
+    // Clear cookies
+    res.clearCookie("access_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+    });
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+    });
+
+    // Clear tokens from Redis
+    if (access_token || refresh_token) {
+      await removeToken(access_token, refresh_token);
+    }
+
+    res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    console.error("Logout error:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 
 const escapeRegex = (string) => {

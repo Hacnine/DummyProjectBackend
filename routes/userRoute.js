@@ -50,7 +50,7 @@ const upload = multer({ storage: storage });
 userRouter.get("/refresh-token", refreshToken);
 userRouter.post("/register", upload.single("image"), register);
 userRouter.post("/login", isLogout, login);
-userRouter.get("/logout", isLogin, logout);
+userRouter.post("/logout", isLogin, logout);
 userRouter.get("/me", isLogin, (req, res) => {
   res.json({ user: req.user });
 });
