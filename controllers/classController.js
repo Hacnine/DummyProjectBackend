@@ -673,7 +673,7 @@ export const searchClasses = async (req, res) => {
 
 export const getUserClasses = async (req, res) => {
   try {
-    const user = req.user._id;
+    const userId = req.user._id;
 
     // Validate userId
     if (!mongoose.isValidObjectId(userId)) {

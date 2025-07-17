@@ -27,8 +27,8 @@ const sendMessage = async (req, res) => {
 
       // Update unread messages count for the receiver
       const unreadMessage = conversation.unread_messages.find(
-        (um) => um.user.toString() === receiver
-      );
+  (um) => um.user && um.user.toString() === receiver
+);
       if (unreadMessage) {
         unreadMessage.count += 1;
       } else {
