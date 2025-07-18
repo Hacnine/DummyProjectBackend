@@ -4,25 +4,25 @@ const { Schema } = mongoose;
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, unique: true },
-    
+
     email: { type: String, required: true, trim: true, unique: true },
     password: { type: String, required: true, trim: true },
-    gender:{ type: String, required: true, },
-    image: { type: String, required: false, trim: true}, // Profile Picture
-    cover_image: { type: String, trim: true }, // Cover Photo
-    bio: { type: String, trim: true, maxlength: 150 }, // Short bio
-    role: { 
-      type: String, 
-      enum: ["user", "admin", "superadmin", "moderator", "teacher"], 
-      default: "user" 
+    gender: { type: String, required: true },
+    image: { type: String, required: false, trim: true },
+    bio: { type: String, trim: true, maxlength: 150 },
+    role: {
+      type: String,
+      enum: ["user", "admin", "superadmin", "moderator", "teacher"],
+      default: "user",
     },
-    friends: [{ type: Schema.Types.ObjectId, ref: "User" }], // Friend list
-    blocked_users: [{ type: Schema.Types.ObjectId, ref: "User" }], // Blocked users
-    friend_requests: [{ type: Schema.Types.ObjectId, ref: "User" }], // Pending friend requests 
+    account_status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "suspended"],
+      default: "pending",
+    },
     is_active: { type: Boolean, default: true },
-    last_seen: { type: Date, default: null }, // Last seen timestamp
-
-    themeIndex: { type: Number, default: 7, required: false }, // Chat theme preference
+    last_login: { type: Date, default: null },
+    themeIndex: { type: Number, default: 1, required: false },
     fileSendingAllowed: { type: Boolean, default: false },
     notification_settings: {
       new_message: { type: Boolean, default: true },
@@ -44,4 +44,3 @@ userSchema.index({ name: 1, email: 1 }, { unique: true });
 
 const User = mongoose.model("User", userSchema);
 export default User;
-

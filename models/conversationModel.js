@@ -39,9 +39,9 @@ const conversationSchema = new Schema(
       },
       fileSendingAllowed: { type: Boolean, default: true },
       moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
-      startTime: { type: String, default: "09:00" }, // e.g., "09:00", "14:30"
-      cutoffTime: { type: String, default: "09:15" }, // e.g., "09:15", "14:45"
-      checkInterval: { type: Number, default: 15 }, // e.g., 15 for 15 minutes
+      startTime: { type: String, default: "09:00" }, 
+      cutoffTime: { type: String, default: "09:15" }, 
+      checkInterval: { type: Number, default: 15 }, 
       selectedDays: [
         {
           type: Number,
@@ -79,9 +79,9 @@ const conversationSchema = new Schema(
 );
 
 // Add indexes for common queries
-conversationSchema.index({ participants: 1 });
 conversationSchema.index({ visibility: 1 });
 conversationSchema.index({ "group.type": 1 });
+conversationSchema.index({ participants: 1, updatedAt: -1 });
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 export default Conversation;

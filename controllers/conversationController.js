@@ -40,7 +40,9 @@ const getAllConversations = async (req, res) => {
     const { userId } = req.params; // Get logged-in user ID from request
 
     const conversations = await Conversation.find({ participants: userId })
-      .populate("participants", "name image") // Populate both users' info
+      .populate("participants", "name image")
+      .sort({ updatedAt: -1 }) // <-- Sort by activity
+      .limit(30) // <-- Only fetch most recent 30
       .lean(); // Convert Mongoose documents to plain objects
 
     // Format conversations to include both participants' info
@@ -253,7 +255,6 @@ export const createGroup = async (req, res) => {
   }
 };
 
-
 const getConversationById = async (req, res) => {
   const { chatId } = req.params;
   const { userId } = req.query;
@@ -283,12 +284,10 @@ const getConversationById = async (req, res) => {
     );
 
     if (!isParticipant) {
-      return res
-        .status(403)
-        .json({
-          message:
-            "Access denied: You are not a participant in this conversation",
-        });
+      return res.status(403).json({
+        message:
+          "Access denied: You are not a participant in this conversation",
+      });
     }
 
     //  Format response
@@ -377,8 +376,6 @@ const updateMessageRequestStatus = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 export const updateConversationThemeIndex = async (req, res) => {
   try {

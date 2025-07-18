@@ -64,25 +64,31 @@ const register = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
+
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body; // Renamed to avoid conflict
+    const { email, password } = req.body;
+
     if (!email || !password) {
       return res
         .status(400)
         .json({ message: "Email and password are required." });
     }
 
-    // Include all fields except device_tokens; password is needed for verification
-    const user = await userModel.findOne({ email }).select(
-      "name email gender image cover_image bio role friends blocked_users friend_requests is_active last_seen themeIndex fileSendingAllowed notification_settings two_factor_auth password"
-    );
+    // Find user and include password explicitly
+    const user = await userModel
+      .findOne({ email })
+      .select(
+        "name email gender image bio role account_status is_active last_seen themeIndex fileSendingAllowed password"
+      );
+
     if (!user) {
       return res
         .status(401)
         .json({ message: "Email or password is incorrect." });
     }
 
+    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res
@@ -90,17 +96,39 @@ const login = async (req, res) => {
         .json({ message: "Email or password is incorrect." });
     }
 
-    // Clear previous tokens
-    res.clearCookie("access_token", {
+    // Check account status
+    if (user.account_status !== "approved") {
+      return res
+        .status(403)
+        .json({ message: `Account is ${user.account_status}.` });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ message: "Account is deactivated." });
+    }
+
+    // Log login metadata (optional but useful)
+    console.log("Login attempt", {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      user: user._id.toString(),
+    });
+
+    // Update last_login (optional: add to your schema)
+    await userModel.findByIdAndUpdate(user._id, { last_login: new Date() });
+
+    // Clear old cookies
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "None",
-    });
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
-    });
+      path: "/",
+    };
+
+    res.clearCookie("access_token", cookieOptions);
+    res.clearCookie("refresh_token", cookieOptions);
+
+    // Clear old Redis tokens
     await redisClient.del(`access_token_${user._id}`);
     await redisClient.del(`refresh_token_${user._id}`);
 
@@ -116,14 +144,14 @@ const login = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // Store tokens
+    // Store tokens in Redis + cookies
     await storeToken(
       res,
       { access: accessToken, refresh: refreshToken },
       user._id.toString()
     );
 
-    // Emit Socket.IO event (if applicable)
+    // Emit online users update (if using Socket.IO)
     if (req.io) {
       req.io.emit(
         "loggedUsersUpdate",
@@ -131,9 +159,13 @@ const login = async (req, res) => {
       );
     }
 
-    // Remove password from user object before sending
-    const { password:FaulPass, ...safeUser } = user.toObject();
-    res.status(200).json({ message: "Login successful", user: safeUser });
+    // Return user info (excluding password)
+    const { password: _ignored, ...safeUser } = user.toObject();
+
+    res.status(200).json({
+      message: "Login successful",
+      user: safeUser,
+    });
   } catch (error) {
     console.error("Login error:", error.message);
     res
@@ -171,8 +203,6 @@ const logout = async (req, res) => {
   }
 };
 
-
-
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
@@ -189,13 +219,13 @@ export const searchUser = async (req, res) => {
       return res.status(400).json({ error: "Invalid query characters" });
     }
 
-
-
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
     if (pageNum < 1 || limitNum < 1) {
-      return res.status(400).json({ error: "Page and limit must be positive integers" });
+      return res
+        .status(400)
+        .json({ error: "Page and limit must be positive integers" });
     }
 
     const escapedQuery = escapeRegex(query);

@@ -66,10 +66,10 @@ const isLogout = async (req, res, next) => {
     }
 
     // Proceed to login regardless of previous token state
-    next();
+     next(); // Always move forward
   } catch (error) {
-    console.error("Internal server error in isLogout:", error.message);
-    return res.status(500).json({ message: "Internal server error." });
+    console.error("isLogout error:", error.message);
+    next(); // Never block login
   }
 };
 
