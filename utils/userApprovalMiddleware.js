@@ -4,28 +4,35 @@ import AdminSettings from "../models/adminSettingsModel.js"
 
 export const createUserApproval = async (userId, req) => {
   try {
-    const settings = await AdminSettings.findOne()
+    const settings = await AdminSettings.findOne();
+    const statusFromFrontend = req.body.status || "pending"; // default fallback
+    const isApprovalGloballyDisabled = !settings?.security?.require_admin_approval;
 
-    if (!settings || !settings.security.require_admin_approval) {
-      return null // No approval required
+    //  Case: Admin approval is disabled & frontend sent 'pending' → skip
+    if (isApprovalGloballyDisabled && statusFromFrontend === "pending") {
+      console.log("Skipping approval: Admin approval is disabled and status is 'pending'");
+      return null;
     }
 
-    // Calculate risk score based on various factors
-    let riskScore = 0
-    const riskFactors = []
-
-    // Check for suspicious patterns
-    if (req.body.email && req.body.email.includes("temp")) {
-      riskScore += 20
-      riskFactors.push("Temporary email detected")
+    //  Case: Admin approval is disabled & status is approved → skip
+    if (isApprovalGloballyDisabled && statusFromFrontend === "approved") {
+      return null;
     }
 
-    // Create approval request
+    //  Case: Admin approval is enabled, allow either 'pending' or 'approved'
+    // Risk score logic (optional)
+    let riskScore = 0;
+    const riskFactors = [];
+
+    if (req.body.email?.includes("temp")) {
+      riskScore += 20;
+      riskFactors.push("Temporary email detected");
+    }
+
     const approval = new UserApproval({
       user: userId,
-      status: "pending",
+      status: statusFromFrontend,
       verification_data: {
-        ip_address: req.ip,
         user_agent: req.get("User-Agent"),
         registration_source: "web",
         email_verified: false,
@@ -33,45 +40,58 @@ export const createUserApproval = async (userId, req) => {
       },
       risk_score: riskScore,
       risk_factors: riskFactors,
-    })
+      reviewed_at: statusFromFrontend === "approved" ? new Date() : undefined,
+      reviewed_by: statusFromFrontend === "approved" && req.user ? req.user._id : undefined,
+    });
 
-    await approval.save()
-    return approval
+    await approval.save();
+    return approval;
   } catch (error) {
-    console.error("Error creating user approval:", error)
-    return null
+    console.error("Error creating user approval:", error);
+    return null;
   }
-}
+};
+
 
 export const checkUserApprovalStatus = async (req, res, next) => {
   try {
-    const settings = await AdminSettings.findOne()
+    const settings = await AdminSettings.findOne();
 
     if (!settings || !settings.security.require_admin_approval) {
-      return next() // No approval required
+      return next(); // Approval not required globally
+    }
+
+    const user = req.user;
+    if (!user || !user.is_active) {
+      return res.status(403).json({
+        message: "Account not active. Please wait for approval.",
+        status: "inactive",
+      });
     }
 
     const approval = await UserApproval.findOne({
-      user: req.user._id,
+      user: user._id,
       status: { $in: ["pending", "approved"] },
-    })
+    });
 
     if (!approval || approval.status === "pending") {
       return res.status(403).json({
         message: "Account pending approval",
         status: "pending_approval",
-      })
+      });
     }
 
     if (approval.status === "rejected") {
       return res.status(403).json({
         message: "Account access denied",
         status: "rejected",
-      })
+      });
     }
 
-    next()
+    next();
   } catch (error) {
-    res.status(500).json({ message: "Error checking approval status" })
+    console.error("Approval middleware error:", error);
+    res.status(500).json({ message: "Error checking approval status" });
   }
-}
+};
+

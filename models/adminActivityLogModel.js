@@ -12,7 +12,7 @@ const adminActivityLogSchema = new Schema(
     },
     target_id: { type: Schema.Types.ObjectId },
     details: { type: Schema.Types.Mixed },
-    ip_address: { type: String },
+    // ip_address: { type: String },
     user_agent: { type: String },
     severity: {
       type: String,

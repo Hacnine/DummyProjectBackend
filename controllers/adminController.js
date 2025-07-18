@@ -14,7 +14,7 @@ const logAdminActivity = async (admin, action, targetType, targetId, details, re
       target_type: targetType,
       target_id: targetId,
       details,
-      ip_address: req.ip,
+      // ip_address: req.ip,
       user_agent: req.get("User-Agent"),
       severity: details?.severity || "low",
     })

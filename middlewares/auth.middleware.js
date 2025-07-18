@@ -46,7 +46,7 @@ const isLogin = async (req, res, next) => {
 const isLogout = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-
+console.log(access_token, refresh_token)
     // Clear cookies and Redis tokens regardless of token validity
     res.clearCookie("access_token", {
       httpOnly: true,

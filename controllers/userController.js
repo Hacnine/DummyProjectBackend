@@ -8,62 +8,104 @@ import { fileURLToPath } from "url";
 import path from "path";
 import User from "../models/userModel.js";
 import { onlineUsers } from "../sockets/onlineUserSocket.js";
+import { createUserApproval } from "../utils/userApprovalMiddleware.js";
+import AdminSettings from "../models/adminSettingsModel.js";
 
 const register = async (req, res) => {
   try {
-    const { name, email, password, gender } = req.body;
-    if (!name || !email || !password || !gender) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
-    const existingUser = await userModel.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "User already exists." });
-    }
-    const passwordHash = await bcrypt.hash(password, 10);
-    // let image = "";
-    // if (gender.trim() === "male") {
-    //   console.log("gender:", gender.trim());
+    const settings = await AdminSettings.findOne();
+    // Allow registration if settings don't exist (initial setup) or if user_registration is true
+    const isRegistrationGloballyEnabled = !settings || settings.features?.user_registration !== false;
 
-    //   image = "/images/avatar/default-avatar.svg";
-    // } else if (gender.trim() === "female") {
-    //   image = "/images/avatar/womanav10.svg";
-    // } else {
-    //   image = "/images/avatar/default-avatar.svg";
+    if (!isRegistrationGloballyEnabled) {
+      return res.status(400).json({ error: { message: "Registration is temporarily off." } });
+    }
+
+    const { name, email, password, gender } = req.body;
+
+    if (!name || !email || !password || !gender) {
+      return res.status(400).json({ error: { message: "All fields are required." } });
+    }
+
+    // Validate password strength
+    // if (password.length < 8) {
+    //   return res.status(400).json({ error: { message: "Password must be at least 8 characters long." } });
     // }
+
+    // Validate gender
+    const validGenders = ["male", "female", "other"];
+    if (!validGenders.includes(gender.toLowerCase())) {
+      return res.status(400).json({ error: { message: "Invalid gender value." } });
+    }
+
+    // Check for existing name (case-insensitive)
+    const existingName = await userModel.findOne({ name: new RegExp(`^${name}$`, "i") });
+    if (existingName) {
+      return res.status(400).json({
+        error: { message: `'${name}' name is already taken. Name must be unique.` },
+      });
+    }
+
+    // Check for existing email (case-insensitive)
+    const normalizedEmail = email.toLowerCase();
+    const existingUser = await userModel.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ error: { message: "User already exists." } });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
 
     const user = new userModel({
       name,
-      email,
+      email: normalizedEmail,
       password: passwordHash,
-      gender,
-      // image,
+      gender: gender.toLowerCase(),
+      // If no settings exist, make the first user an admin
+      isAdmin: !settings,
     });
+
     await user.save();
 
-    const accessToken = jwt.sign(
-      { id: user._id },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "7d" }
-    );
-    const refreshToken = jwt.sign(
-      { id: user._id },
-      process.env.REFRESH_TOKEN_SECRET,
-      { expiresIn: "7d" }
-    );
-    const userId = user._id;
-    storeToken(res, { access: accessToken, refresh: refreshToken }, userId);
+    // Create AdminSettings for the first user
+    if (!settings) {
+      const newSettings = new AdminSettings({
+        features: {
+          user_registration: true, // Enable registration by default
+          // Other defaults as per your schema
+        },
+        security: {
+          require_admin_approval: true, // Or false, depending on your needs
+          // Other defaults
+        },
+        updated_by: user._id, // Reference the first user as the creator
+      });
+      await newSettings.save();
+    }
 
-    // Emit the loggedUsersUpdate event
-    const getAllUsers = await userModel.find({});
-    req.io.emit("getAllUsersUpdate", getAllUsers);
-
-    res.status(201).json({ message: "User registered successfully", user });
+    // Handle approval based on settings
+    if (settings?.security?.require_admin_approval && settings) {
+      try {
+        await createUserApproval(user._id, req);
+        return res.status(201).json({
+          message: "User registered successfully. Awaiting approval.",
+        });
+      } catch (approvalError) {
+        return res.status(500).json({
+          error: { message: "Failed to create approval request.", details: approvalError.message },
+        });
+      }
+    } else {
+      user.isApproved = true;
+      await user.save();
+      return res.status(201).json({ message: "User registered successfully." });
+    }
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    return res.status(500).json({
+      error: { message: "Internal server error", details: error.message },
+    });
   }
 };
+
 
 const login = async (req, res) => {
   try {
@@ -97,12 +139,6 @@ const login = async (req, res) => {
     }
 
     // Check account status
-    if (user.account_status !== "approved") {
-      return res
-        .status(403)
-        .json({ message: `Account is ${user.account_status}.` });
-    }
-
     if (!user.is_active) {
       return res.status(403).json({ message: "Account is deactivated." });
     }
@@ -174,7 +210,6 @@ const login = async (req, res) => {
   }
 };
 
-
 const logout = async (req, res) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
@@ -193,7 +228,7 @@ const logout = async (req, res) => {
 
     // Clear tokens from Redis
     if (access_token || refresh_token) {
-      await removeToken(access_token, refresh_token);
+      await removeToken( res, req );
     }
 
     res.status(200).json({ message: "Logged out successfully" });

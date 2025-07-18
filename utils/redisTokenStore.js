@@ -16,30 +16,38 @@ const storeToken = async (res, token, userId) => {
   }
 };
 
+
 const getToken = async (req) => {
-  const access_token = req.cookies["access_token"];
-  const refresh_token = req.cookies["refresh_token"];
-  if (!access_token) return { access_token: null, refresh_token: null };
+  const cookies = req.cookies || {}; // Fallback to empty object if req.cookies is undefined
+  const access_token = cookies.access_token || null;
+  const refresh_token = cookies.refresh_token || null;
+  // If no access_token, return both as null or keep refresh_token
+  if (!access_token) {
+    return { access_token: null, refresh_token };
+  }
 
   try {
     const decoded = jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET);
     const userId = decoded.id;
 
-    // Fetch tokens by user ID instead of using the token itself
+    // Fetch tokens from Redis by user ID
     const storedAccess = await redisClient.get(`access_token_${userId}`);
     const storedRefresh = await redisClient.get(`refresh_token_${userId}`);
 
-    return { access_token: storedAccess, refresh_token: storedRefresh };
+    return {
+      access_token: storedAccess || access_token, // Fallback to cookie if Redis has no token
+      refresh_token: storedRefresh || refresh_token, // Fallback to cookie if Redis has no token
+    };
   } catch (error) {
     console.error("Token Decode Error:", error.message);
-    return { access_token: null, refresh_token: null };
+    return { access_token: null, refresh_token }; // Keep refresh_token for potential refresh
   }
 };
 
 const removeToken = async (res, req) => {
   try {
     const { access_token, refresh_token } = req.cookies;
-    
+    console.log(access_token, refresh_token)
     if (!access_token || !refresh_token) {
       return res.status(400).json({ message: "No tokens found" });
     }

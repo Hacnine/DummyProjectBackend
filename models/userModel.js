@@ -15,12 +15,7 @@ const userSchema = new Schema(
       enum: ["user", "admin", "superadmin", "moderator", "teacher"],
       default: "user",
     },
-    account_status: {
-      type: String,
-      enum: ["pending", "approved", "rejected", "suspended"],
-      default: "pending",
-    },
-    is_active: { type: Boolean, default: true },
+    is_active: { type: Boolean, default: false },
     last_login: { type: Date, default: null },
     themeIndex: { type: Number, default: 1, required: false },
     fileSendingAllowed: { type: Boolean, default: false },

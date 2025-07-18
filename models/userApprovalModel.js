@@ -17,7 +17,7 @@ const userApprovalSchema = new Schema(
 
     // Additional verification data
     verification_data: {
-      ip_address: { type: String },
+      // ip_address: { type: String },
       user_agent: { type: String },
       registration_source: { type: String },
       email_verified: { type: Boolean, default: false },
