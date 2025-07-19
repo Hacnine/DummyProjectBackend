@@ -54,6 +54,7 @@ const getAllConversations = async (req, res) => {
           image: convo.group.image || "images/default-group.svg",
           last_message: convo.last_message,
           is_group: true,
+          conversationType: convo.group.type || "group", //  Add this
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
@@ -68,6 +69,7 @@ const getAllConversations = async (req, res) => {
           status: convo.status,
           last_message: convo.last_message,
           is_group: false,
+          conversationType: "one to one",
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
@@ -268,7 +270,7 @@ const getConversationById = async (req, res) => {
     //  Fetch conversation and populate participants
     const conversation = await Conversation.findById(chatId)
       .select(
-        "-themeIndex -updatedAt -createdAt -unread_messages -last_message"
+        "-updatedAt -createdAt -unread_messages -last_message"
       )
       .populate("participants", "name image")
       .lean();
@@ -296,8 +298,10 @@ const getConversationById = async (req, res) => {
       participants: conversation.participants.map((user) => ({
         _id: user._id,
         name: user.name,
-        image: user.image || "images/default-avatar.svg", // Provide a default image if empty
+        image: user.image || "images/default-avatar.svg",
+        
       })),
+      themeIndex: conversation.themeIndex
     };
 
     return res.json(formattedConversation);

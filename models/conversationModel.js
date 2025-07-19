@@ -31,7 +31,7 @@ const conversationSchema = new Schema(
       image: { type: String }, // Group profile picture
       admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
 
-      // ✅ Extended fields for classroom functionality
+      // Extended fields for classroom functionality
       classType: {
         type: String,
         enum: ["regular", "weekly", "multi-weekly", "monthly", "exam"],
@@ -62,7 +62,7 @@ const conversationSchema = new Schema(
         },
       ], // 0 = Sunday, 6 = Saturday
     },
-    themeIndex: { type: Number, default: 6, required: false },
+    themeIndex: { type: Number, default: 0, required: false },
     last_message: {
       message: { type: String, default: "" },
       sender: { type: Schema.Types.ObjectId, ref: "User" }, // Last sender

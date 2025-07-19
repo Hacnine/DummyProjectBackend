@@ -42,7 +42,7 @@ const register = async (req, res) => {
     const existingName = await userModel.findOne({ name: new RegExp(`^${name}$`, "i") });
     if (existingName) {
       return res.status(400).json({
-        error: { message: `'${name}' name is already taken. Name must be unique.` },
+        error: { message: `'${name}' name is already taken. Choose a different name.` },
       });
     }
 
@@ -50,7 +50,7 @@ const register = async (req, res) => {
     const normalizedEmail = email.toLowerCase();
     const existingUser = await userModel.findOne({ email: normalizedEmail });
     if (existingUser) {
-      return res.status(400).json({ error: { message: "User already exists." } });
+      return res.status(400).json({ error: {message: `'${email}' name is already taken. Choose a different email address.` } });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
