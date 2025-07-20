@@ -163,7 +163,7 @@ export const deleteUser = async (req, res) => {
     )
 
     // Emit user deletion event
-    req.io.emit("userDeleted", { userId, reason })
+    // req.io.emit("userDeleted", { userId, reason })
 
     res.json({ message: "User deleted successfully" })
   } catch (error) {
@@ -196,11 +196,11 @@ export const blockUser = async (req, res) => {
     await logAdminActivity(req.user, "block_user", "user", userId, { reason, duration, user_email: user.email }, req)
 
     // Notify user
-    req.io.to(userId).emit("accountBlocked", {
-      message: "Your account has been blocked",
-      reason,
-      duration,
-    })
+    // req.io.to(userId).emit("accountBlocked", {
+    //   message: "Your account has been blocked",
+    //   reason,
+    //   duration,
+    // })
 
     res.json({ message: "User blocked successfully", user })
   } catch (error) {
@@ -230,9 +230,9 @@ export const unblockUser = async (req, res) => {
     await logAdminActivity(req.user, "unblock_user", "user", userId, { user_email: user.email }, req)
 
     // Notify user
-    req.io.to(userId).emit("accountUnblocked", {
-      message: "Your account has been unblocked",
-    })
+    // req.io.to(userId).emit("accountUnblocked", {
+    //   message: "Your account has been unblocked",
+    // })
 
     res.json({ message: "User unblocked successfully", user })
   } catch (error) {

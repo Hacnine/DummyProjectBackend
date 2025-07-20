@@ -28,6 +28,7 @@ export const requireAdmin = async (req, res, next) => {
 }
 
 export const requireSuperAdmin = async (req, res, next) => {
+  console.log(req?.user?.role );
   try {
     if (req.user.role !== "superadmin") {
       return res.status(403).json({ message: "Super admin access required" })

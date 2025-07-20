@@ -112,7 +112,6 @@ export const approveUser = async (req, res) => {
   try {
     const { approvalId } = req.params
     const { notes } = req.body
-
     const approval = await UserApproval.findById(approvalId).populate("user")
     if (!approval) {
       return res.status(404).json({ message: "Approval request not found" })
@@ -139,9 +138,9 @@ export const approveUser = async (req, res) => {
     )
 
     // Emit notification to user
-    req.io.to(approval.user._id.toString()).emit("accountApproved", {
-      message: "Your account has been approved!",
-    })
+    // req.io.to(approval.user._id.toString()).emit("accountApproved", {
+    //   message: "Your account has been approved!",
+    // })
 
     res.json({ message: "User approved successfully", approval })
   } catch (error) {
