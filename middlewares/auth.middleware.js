@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { getToken, storeToken } from "../utils/redisTokenStore.js";
+import { getToken, removeToken, storeToken } from "../utils/redisTokenStore.js";
 import User from "../models/userModel.js";
 
 const isLogin = async (req, res, next) => {
@@ -63,7 +63,7 @@ console.log(access_token, refresh_token)
     if (access_token) {
       // Optionally, invalidate tokens in Redis
       // Assuming you have a function to delete tokens in redisTokenStore.js
-      await deleteToken(access_token, refresh_token);
+      await removeToken(res, req);
     }
 
     // Proceed to login regardless of previous token state
