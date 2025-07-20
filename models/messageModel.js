@@ -29,15 +29,7 @@ const messageSchema = new Schema(
 
     messageType: {
       type: String,
-      enum: [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "file",
-        "system",
-        "reply",
-      ],
+      enum: ["text", "image", "video", "audio", "file", "system", "reply"],
       default: "text",
     },
 
@@ -59,13 +51,13 @@ const messageSchema = new Schema(
       ref: "Message",
     }, // Quoted reply
 
+   
     readBy: [
       {
         user: { type: Schema.Types.ObjectId, ref: "User" },
         readAt: { type: Date, default: Date.now },
       },
     ],
-
     deletedBy: [{ type: Schema.Types.ObjectId, ref: "User" }], // Soft delete
 
     edited: {
