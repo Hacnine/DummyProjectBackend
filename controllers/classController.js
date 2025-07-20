@@ -4,10 +4,10 @@ import AssignmentSubmission from "../models/assignmentSubmissionModel.js";
 import AttendanceLog from "../models/attendanceLogModel.js";
 import AlertnessSession from "../models/alertnessSessionModel.js";
 import User from "../models/userModel.js";
-import { scheduleSessionCronForClass } from "../utils/cronJobs.js";
 import { isValidTimeFormat } from "../utils/timeformatValidation.js";
 import moment from "moment";
 import mongoose from "mongoose";
+import { scheduleSessionCronForClass } from "../schedulers/sessionCreation.js";
 
 export const createClass = async (req, res) => {
   try {

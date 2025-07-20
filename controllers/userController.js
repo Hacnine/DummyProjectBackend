@@ -150,8 +150,8 @@ const login = async (req, res) => {
       user: user._id.toString(),
     });
 
-    // Update last_login (optional: add to your schema)
-    await userModel.findByIdAndUpdate(user._id, { last_login: new Date() });
+    // Update last_seen (optional: add to your schema)
+    await userModel.findByIdAndUpdate(user._id, { last_seen: new Date() });
 
     // Clear old cookies
     const cookieOptions = {

@@ -23,7 +23,8 @@ import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import { initSocketServer } from "./sockets/index.js";
-import { startCronJobs } from "./utils/cronJobs.js"; 
+import { startCronJobs } from "./schedulers/sessionCreation.js"; 
+import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletion.js';
 
 dotenv.config();
 
@@ -107,6 +108,7 @@ app.use("/class-group/flies", fileRoutes);
 connectDB(DATABASE_URL)
   .then(() => {
     startCronJobs();
+    startCronJobsForScheduledDeletion();
     server.listen(port, () => console.log(`Server running on port ${port}`));
   })
   .catch((err) => {

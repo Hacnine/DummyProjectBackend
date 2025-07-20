@@ -16,7 +16,7 @@ const userSchema = new Schema(
       default: "user",
     },
     is_active: { type: Boolean, default: false },
-    last_login: { type: Date, default: null },
+    last_seen: { type: Date, default: null },
     themeIndex: { type: Number, default: 1, required: false },
     fileSendingAllowed: { type: Boolean, default: false },
     notification_settings: {
