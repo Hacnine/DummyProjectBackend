@@ -5,7 +5,7 @@ import User from "../models/userModel.js";
 const isLogin = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-
+// console.log(access_token)
     if (!access_token) {
       return res.status(401).json({ message: "Unauthorized: Please log in." });
     }
@@ -47,7 +47,6 @@ const isLogin = async (req, res, next) => {
 const isLogout = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-console.log(access_token, refresh_token)
     // Clear cookies and Redis tokens regardless of token validity
     res.clearCookie("access_token", {
       httpOnly: true,

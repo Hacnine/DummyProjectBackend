@@ -2,6 +2,7 @@ import Conversation from "../models/conversationModel.js";
 import Message from "../models/messageModel.js";
 import File from "../models/fileModel.js"; // Added for file handling
 import mongoose from "mongoose";
+import JoinRequest from "../models/joinRequestModel.js";
 
 // Helper to validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -12,126 +13,142 @@ const isUserInConversation = async (conversationId, userId) => {
   return conversation?.participants.some((p) => p.equals(userId));
 };
 
-
-// Send a message (text or file)
-const sendMessage = async (req, res) => {
-  const { conversationId } = req.params;
-  const { text, replyTo, messageType = "text" } = req.body;
-  const sender = req.user._id; // Assuming user is attached via auth middleware
-  let receiver = req.body.receiver; // Optional for group chats
-  let media = [];
+export const sendMessage = async (req, res) => {
+  let { sender, receiver, text } = req.body;
+  let { conversationId } = req.params;
 
   try {
-    // Validate conversation and user participation
-    if (!isValidObjectId(conversationId) || !(await isUserInConversation(conversationId, sender))) {
-      console.log("Sender:", sender);
-      console.log("Conversation ID:", conversationId);
-      return res.status(403).json({ message: "Invalid conversation or unauthorized" });
-    }
+    let conversation;
 
-    // Handle file uploads for image, video, audio, or file
-    if (req.file && messageType !== "text") {
-      const allowedTypes = ["image", "video", "audio", "file"];
-      if (!allowedTypes.includes(messageType)) {
-        return res.status(400).json({ message: "Invalid message type" });
+    if (!conversationId) {
+      if (!sender || !receiver) {
+        return res.status(400).json({ message: "Sender and receiver are required for new conversation" });
       }
 
-      // Save file to File model
-      const file = new File({
-        filename: req.file.filename,
-        originalName: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        path: req.file.path,
-        uploadedBy: sender,
-        classId: conversationId,
+      // Try to find existing one-to-one conversation
+      conversation = await Conversation.findOne({
+        participants: { $all: [sender, receiver], $size: 2 },
+        "group.is_group": false,
       });
 
-      await file.save();
+      // Create new conversation if not found
+      if (!conversation) {
+        conversation = new Conversation({
+          participants: [
+            new mongoose.Types.ObjectId(sender),
+            new mongoose.Types.ObjectId(receiver),
+          ],
+          senderId: sender,
+          receiverId: receiver,
+          visibility: "private",
+          group: { is_group: false },
+        });
 
-      // Add file metadata to message's media array
-      media.push({
-        url: `/uploads/${file.filename}`,
-        type: messageType,
-        filename: file.originalName,
-        size: file.size,
-      });
+        await conversation.save();
+      }
+
+      conversationId = conversation._id;
+    } else {
+      // Use existing conversation
+      conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // Extract participants for message context
+      const [userA, userB] = conversation.participants;
+      if (!sender) sender = req.body.sender || userA;
+      if (!receiver) receiver = (userA.toString() === sender ? userB : userA);
     }
 
-    // Validate replyTo if provided
-    if (replyTo && !isValidObjectId(replyTo)) {
-      return res.status(400).json({ message: "Invalid replyTo message ID" });
-    }
-
-    // Create new message
+    // Prepare new message
     const newMessage = new Message({
-      conversation: conversationId,
       sender,
-      receiver: receiver ? (isValidObjectId(receiver) ? receiver : null) : null,
-      text: messageType === "text" ? text : "",
-      messageType,
-      media,
-      replyTo: replyTo || null,
+      receiver,
+      text,
+      conversation: conversationId,
     });
+
+    // Handle media file
+    if (req.file) {
+      newMessage.media = req.file.path;
+      newMessage.mediaType = req.file.mimetype;
+    }
 
     await newMessage.save();
 
-    // Update conversation's last message and unread counts
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    // Update last message
+    // Update conversation last message
     conversation.last_message = {
-      message: text || `${messageType} message`,
+      message: text || "[Media]",
       sender,
       timestamp: new Date(),
     };
 
-    // Log participants for debugging
-    console.log("Participants:", conversation.participants);
-
-    // Update unread messages for participants (except sender)
-    conversation.participants.forEach((participant) => {
-      // Ensure participant is a valid ObjectId
-      if (!isValidObjectId(participant)) {
-        console.warn(`Invalid participant ID: ${participant}`);
-        return;
-      }
-
-      if (participant.toString() !== sender.toString()) {
-        const unreadMessage = conversation.unread_messages.find(
-          (um) => um.user && um.user.toString() === participant.toString()
-        );
-        if (unreadMessage) {
-          unreadMessage.count += 1;
-        } else {
-          // Only push valid participant IDs
-          conversation.unread_messages.push({
-            user: mongoose.Types.ObjectId(participant),
-            count: 1,
-          });
-        }
-      }
-    });
+    // Update unread message count
+    const unread = conversation.unread_messages.find(
+      (um) => um.user.toString() === receiver
+    );
+    if (unread) {
+      unread.count += 1;
+    } else {
+      conversation.unread_messages.push({ user: receiver, count: 1 });
+    }
 
     await conversation.save();
 
-    // Populate sender, receiver, and replyTo for emission
-    const populatedMessage = await Message.findById(newMessage._id)
-      .populate("sender", "username")
-      .populate("receiver", "username")
-      .populate("replyTo");
+    // Emit socket event
+    req.io.to(receiver).emit("receiveMessage", newMessage);
 
-    // Emit message to conversation room
-    req.io.to(conversationId).emit("receiveMessage", populatedMessage);
-
-    res.status(201).json(populatedMessage);
+    res.status(201).json({ message: newMessage, conversationId });
   } catch (error) {
     console.error("Error sending message:", error);
     res.status(500).json({ message: "Server error" });
   }
+};
+
+// Handle Read Messages Event
+const markMessagesAsRead = async (conversationId, userId, io) => {
+  try {
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) return;
+
+    // Reset unread messages for this user
+    const unreadMessage = conversation.unread_messages.find(
+      (um) => um.user.toString() === userId
+    );
+    if (unreadMessage) {
+      unreadMessage.count = 0; // Reset unread count
+    }
+
+    await conversation.save();
+
+    // Notify all users in the conversation that messages are read
+    io.to(conversationId).emit("messagesRead", {
+      conversationId,
+      userId,
+    });
+  } catch (error) {
+    console.error("Error marking messages as read:", error);
+  }
+};
+
+// Socket.io Setup
+const setupSocket = (io) => {
+  io.on("connection", (socket) => {
+    console.log("User connected:", socket.id);
+
+    socket.on("joinConversation", (conversationId) => {
+      socket.join(conversationId);
+    });
+
+    socket.on("messageRead", async ({ conversationId, userId }) => {
+      await markMessagesAsRead(conversationId, userId, io);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("User disconnected:", socket.id);
+    });
+  });
 };
 
 // Edit a message
@@ -152,12 +169,16 @@ const editMessage = async (req, res) => {
 
     // Check if user is the sender
     if (message.sender.toString() !== userId.toString()) {
-      return res.status(403).json({ message: "Unauthorized to edit this message" });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to edit this message" });
     }
 
     // Only text messages can be edited
     if (message.messageType !== "text") {
-      return res.status(400).json({ message: "Only text messages can be edited" });
+      return res
+        .status(400)
+        .json({ message: "Only text messages can be edited" });
     }
 
     // Update message
@@ -192,8 +213,12 @@ const deleteMessage = async (req, res) => {
     }
 
     // Check if user is the sender or a conversation participant
-    if (!(await isUserInConversation(message.conversation.toString(), userId))) {
-      return res.status(403).json({ message: "Unauthorized to delete this message" });
+    if (
+      !(await isUserInConversation(message.conversation.toString(), userId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to delete this message" });
     }
 
     // Add user to deletedBy array
@@ -203,7 +228,9 @@ const deleteMessage = async (req, res) => {
     }
 
     // Emit delete event to conversation room
-    req.io.to(message.conversation.toString()).emit("messageDeleted", { messageId, userId });
+    req.io
+      .to(message.conversation.toString())
+      .emit("messageDeleted", { messageId, userId });
 
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
@@ -222,11 +249,15 @@ const replyMessage = async (req, res) => {
   try {
     // Validate conversation and message
     if (!isValidObjectId(conversationId) || !isValidObjectId(messageId)) {
-      return res.status(400).json({ message: "Invalid conversation or message ID" });
+      return res
+        .status(400)
+        .json({ message: "Invalid conversation or message ID" });
     }
 
     if (!(await isUserInConversation(conversationId, sender))) {
-      return res.status(403).json({ message: "Unauthorized to reply in this conversation" });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to reply in this conversation" });
     }
 
     const originalMessage = await Message.findById(messageId);
@@ -289,7 +320,13 @@ const replyMessage = async (req, res) => {
 // Get messages with pagination
 const getMessages = async (req, res) => {
   const { conversationId } = req.params;
-  const { userId, participant1, participant2, page = 1, limit = 20 } = req.query;
+  const {
+    userId,
+    participant1,
+    participant2,
+    page = 1,
+    limit = 20,
+  } = req.query;
 
   try {
     const pageNum = parseInt(page, 10);
@@ -298,7 +335,9 @@ const getMessages = async (req, res) => {
     if (conversationId && isValidObjectId(conversationId)) {
       // Fetch messages by conversationId with pagination
       if (!(await isUserInConversation(conversationId, userId))) {
-        return res.status(403).json({ message: "Unauthorized to view this conversation" });
+        return res
+          .status(403)
+          .json({ message: "Unauthorized to view this conversation" });
       }
 
       const messages = await Message.find({ conversation: conversationId })
@@ -309,14 +348,21 @@ const getMessages = async (req, res) => {
         .skip((pageNum - 1) * limitNum)
         .limit(limitNum);
 
-      const totalMessages = await Message.countDocuments({ conversation: conversationId });
+      const totalMessages = await Message.countDocuments({
+        conversation: conversationId,
+      });
 
       return res.status(200).json({
         messages,
         totalPages: Math.ceil(totalMessages / limitNum),
         currentPage: pageNum,
       });
-    } else if (participant1 && participant2 && isValidObjectId(participant1) && isValidObjectId(participant2)) {
+    } else if (
+      participant1 &&
+      participant2 &&
+      isValidObjectId(participant1) &&
+      isValidObjectId(participant2)
+    ) {
       // Fetch messages by participants with pagination
       const messages = await Message.find({
         $or: [
@@ -353,45 +399,51 @@ const getMessages = async (req, res) => {
 };
 
 // Mark messages as read
-const markMessagesAsRead = async (req, res) => {
-  const { conversationId } = req.params;
-  const userId = req.user._id;
+// const markMessagesAsRead = async (req, res) => {
+//   const { conversationId } = req.params;
+//   const userId = req.user._id;
 
-  try {
-    if (!isValidObjectId(conversationId)) {
-      return res.status(400).json({ message: "Invalid conversation ID" });
-    }
+//   try {
+//     if (!isValidObjectId(conversationId)) {
+//       return res.status(400).json({ message: "Invalid conversation ID" });
+//     }
 
-    if (!(await isUserInConversation(conversationId, userId))) {
-      return res.status(403).json({ message: "Unauthorized to mark messages as read" });
-    }
+//     if (!(await isUserInConversation(conversationId, userId))) {
+//       return res.status(403).json({ message: "Unauthorized to mark messages as read" });
+//     }
 
-    // Mark messages as read
-    await Message.updateMany(
-      { conversation: conversationId, readBy: { $ne: { user: userId } } },
-      { $push: { readBy: { user: userId, readAt: new Date() } } }
-    );
+//     // Mark messages as read
+//     await Message.updateMany(
+//       { conversation: conversationId, readBy: { $ne: { user: userId } } },
+//       { $push: { readBy: { user: userId, readAt: new Date() } } }
+//     );
 
-    // Reset unread count in conversation
-    const conversation = await Conversation.findById(conversationId);
-    if (conversation) {
-      const unreadMessage = conversation.unread_messages.find(
-        (um) => um.user.toString() === userId.toString()
-      );
-      if (unreadMessage) {
-        unreadMessage.count = 0;
-        await conversation.save();
-      }
-    }
+//     // Reset unread count in conversation
+//     const conversation = await Conversation.findById(conversationId);
+//     if (conversation) {
+//       const unreadMessage = conversation.unread_messages.find(
+//         (um) => um.user.toString() === userId.toString()
+//       );
+//       if (unreadMessage) {
+//         unreadMessage.count = 0;
+//         await conversation.save();
+//       }
+//     }
 
-    // Emit read event
-    req.io.to(conversationId).emit("messagesRead", { conversationId, userId });
+//     // Emit read event
+//     req.io.to(conversationId).emit("messagesRead", { conversationId, userId });
 
-    res.status(200).json({ message: "Messages marked as read" });
-  } catch (error) {
-    console.error("Error marking messages as read:", error);
-    res.status(500).json({ message: "Server error" });
-  }
+//     res.status(200).json({ message: "Messages marked as read" });
+//   } catch (error) {
+//     console.error("Error marking messages as read:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
+export {
+  editMessage,
+  deleteMessage,
+  replyMessage,
+  getMessages,
+  markMessagesAsRead,
 };
-
-export { sendMessage, editMessage, deleteMessage, replyMessage, getMessages, markMessagesAsRead };

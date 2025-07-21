@@ -25,6 +25,7 @@ import fileRoutes from "./routes/fileRoutes.js";
 import { initSocketServer } from "./sockets/index.js";
 import { startCronJobs } from "./schedulers/sessionCreation.js"; 
 import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletion.js';
+import upload from './middlewares/multerConfig.js';
 
 dotenv.config();
 
@@ -101,7 +102,7 @@ app.use("/class-group/assignments", assignmentRoutes);
 app.use("/class-group/attendance", attendanceRoutes);
 app.use("/class-group/alertness", alertnessRoutes);
 app.use("/class-group/notification", notificationRoutes);
-app.use("/class-group/flies", fileRoutes);
+app.use("/class-group/files", fileRoutes);
 // ...existing code...
 
 // Connect to DB and start server

@@ -37,11 +37,11 @@ const conversationSchema = new Schema(
         enum: ["regular", "weekly", "multi-weekly", "monthly", "exam"],
         default: "regular",
       },
-      fileSendingAllowed: { type: Boolean, default: true },
+      fileSendingAllowed: { type: Boolean, default: false },
       moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
-      startTime: { type: String, default: "09:00" }, 
-      cutoffTime: { type: String, default: "09:15" }, 
-      checkInterval: { type: Number, default: 15 }, 
+      startTime: { type: String, default: "09:00" },
+      cutoffTime: { type: String, default: "09:15" },
+      checkInterval: { type: Number, default: 15 },
       selectedDays: [
         {
           type: Number,
@@ -70,7 +70,7 @@ const conversationSchema = new Schema(
     },
     unread_messages: [
       {
-        user: { type: Schema.Types.ObjectId, ref: "User" },
+        user: { type: Schema.Types.ObjectId, ref: "User", required: true },
         count: { type: Number, default: 0 },
       },
     ],

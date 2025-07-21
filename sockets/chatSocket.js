@@ -1,5 +1,3 @@
-import { onlineUsers } from "./onlineUserSocket.js";
-
 export const registerChatHandlers = (io, socket) => {
   socket.on("joinRoom", (conversationId) => {
     socket.join(conversationId);
@@ -10,9 +8,7 @@ export const registerChatHandlers = (io, socket) => {
   });
 
   socket.on("sendMessage", (message) => {
-    const receiver = onlineUsers.get(message.receiver);
-    if (receiver) {
-      io.to(receiver.socketId).emit("receiveMessage", message);
-    }
+    // Emit to all users in the conversation room
+    io.to(message.conversationId).emit("receiveMessage", message);
   });
 };
