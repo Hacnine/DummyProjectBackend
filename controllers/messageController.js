@@ -14,15 +14,16 @@ const isUserInConversation = async (conversationId, userId) => {
 };
 
 export const sendMessage = async (req, res) => {
-  let { sender, receiver, text } = req.body;
+  const sender = req.user._id; // ✅ Sender from authenticated user
+  const { receiver, text } = req.body;
   let { conversationId } = req.params;
 
   try {
     let conversation;
 
     if (!conversationId) {
-      if (!sender || !receiver) {
-        return res.status(400).json({ message: "Sender and receiver are required for new conversation" });
+      if (!receiver) {
+        return res.status(400).json({ message: "Receiver is required for new conversation" });
       }
 
       // Try to find existing one-to-one conversation
@@ -31,8 +32,8 @@ export const sendMessage = async (req, res) => {
         "group.is_group": false,
       });
 
-      // Create new conversation if not found
       if (!conversation) {
+        // Create new one-to-one conversation
         conversation = new Conversation({
           participants: [
             new mongoose.Types.ObjectId(sender),
@@ -49,27 +50,27 @@ export const sendMessage = async (req, res) => {
 
       conversationId = conversation._id;
     } else {
-      // Use existing conversation
+      // Existing conversation
       conversation = await Conversation.findById(conversationId);
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
       }
-
-      // Extract participants for message context
-      const [userA, userB] = conversation.participants;
-      if (!sender) sender = req.body.sender || userA;
-      if (!receiver) receiver = (userA.toString() === sender ? userB : userA);
     }
 
-    // Prepare new message
+    // Determine receiver if not explicitly sent (optional fallback)
+    const otherParticipant = conversation.participants.find(
+      (id) => id.toString() !== sender.toString()
+    );
+    const resolvedReceiver = receiver || otherParticipant;
+
+    // Create and save the message
     const newMessage = new Message({
       sender,
-      receiver,
+      receiver: resolvedReceiver,
       text,
       conversation: conversationId,
     });
 
-    // Handle media file
     if (req.file) {
       newMessage.media = req.file.path;
       newMessage.mediaType = req.file.mimetype;
@@ -77,27 +78,28 @@ export const sendMessage = async (req, res) => {
 
     await newMessage.save();
 
-    // Update conversation last message
+    // Update last message in conversation
     conversation.last_message = {
       message: text || "[Media]",
       sender,
       timestamp: new Date(),
     };
 
-    // Update unread message count
+    // Update unread messages for receiver
     const unread = conversation.unread_messages.find(
-      (um) => um.user.toString() === receiver
+      (um) => um.user.toString() === resolvedReceiver.toString()
     );
+
     if (unread) {
       unread.count += 1;
     } else {
-      conversation.unread_messages.push({ user: receiver, count: 1 });
+      conversation.unread_messages.push({ user: resolvedReceiver, count: 1 });
     }
 
     await conversation.save();
 
-    // Emit socket event
-    req.io.to(receiver).emit("receiveMessage", newMessage);
+    // Emit real-time socket event
+    req.io.to(resolvedReceiver.toString()).emit("receiveMessage", newMessage);
 
     res.status(201).json({ message: newMessage, conversationId });
   } catch (error) {
