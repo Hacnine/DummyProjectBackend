@@ -213,22 +213,20 @@ export const sendEmoji = async (req, res) => {
 };
 
 // Handle Read Messages Event
-const markMessagesAsRead = async (conversationId, userId, io) => {
+export const markMessagesAsRead = async (conversationId, userId, io) => {
   try {
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) return;
 
-    // Reset unread messages for this user
     const unreadMessage = conversation.unread_messages.find(
       (um) => um.user.toString() === userId
     );
     if (unreadMessage) {
-      unreadMessage.count = 0; // Reset unread count
+      unreadMessage.count = 0;
     }
 
     await conversation.save();
 
-    // Notify all users in the conversation that messages are read
     io.to(conversationId).emit("messagesRead", {
       conversationId,
       userId,
@@ -238,27 +236,8 @@ const markMessagesAsRead = async (conversationId, userId, io) => {
   }
 };
 
-// Socket.io Setup
-const setupSocket = (io) => {
-  io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
-
-    socket.on("joinConversation", (conversationId) => {
-      socket.join(conversationId);
-    });
-
-    socket.on("messageRead", async ({ conversationId, userId }) => {
-      await markMessagesAsRead(conversationId, userId, io);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.id);
-    });
-  });
-};
-
 // Edit a message
-const editMessage = async (req, res) => {
+export const editMessage = async (req, res) => {
   const { messageId } = req.params;
   const { text } = req.body;
   const userId = req.user._id;
@@ -304,49 +283,64 @@ const editMessage = async (req, res) => {
 };
 
 // Delete a message (soft delete)
-const deleteMessage = async (req, res) => {
-  const { messageId } = req.params;
-  const userId = req.user._id;
-
+export const deleteMessage = async ({ io, socket, messageId, userId, req, res }) => {
   try {
     if (!isValidObjectId(messageId)) {
-      return res.status(400).json({ message: "Invalid message ID" });
+      if (res) return res.status(400).json({ message: "Invalid message ID" });
+      socket.emit("deleteMessageError", { message: "Invalid message ID" });
+      return { success: false, message: "Invalid message ID" };
     }
 
     const message = await Message.findById(messageId);
     if (!message) {
-      return res.status(404).json({ message: "Message not found" });
+      if (res) return res.status(404).json({ message: "Message not found" });
+      socket.emit("deleteMessageError", { message: "Message not found" });
+      return { success: false, message: "Message not found" };
     }
 
-    // Check if user is the sender or a conversation participant
-    if (
-      !(await isUserInConversation(message.conversation.toString(), userId))
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to delete this message" });
+    if (!(await isUserInConversation(message.conversation.toString(), userId))) {
+      if (res) return res.status(403).json({ message: "Unauthorized to delete this message" });
+      socket.emit("deleteMessageError", { message: "Unauthorized to delete this message" });
+      return { success: false, message: "Unauthorized to delete this message" };
     }
 
-    // Add user to deletedBy array
-    if (!message.deletedBy.includes(userId)) {
-      message.deletedBy.push(userId);
-      await message.save();
+    let hardDelete = false;
+
+    if (message.sender.toString() === userId.toString()) {
+      // Hard delete if the requester is the message owner
+      await Message.findByIdAndDelete(messageId);
+      hardDelete = true;
+    } else {
+      // Soft delete for non-owners
+      if (!message.deletedBy.includes(userId)) {
+        message.deletedBy.push(userId);
+        await message.save();
+      }
     }
 
-    // Emit delete event to conversation room
-    req.io
-      .to(message.conversation.toString())
-      .emit("messageDeleted", { messageId, userId });
+    // Emit messageDeleted event with hardDelete flag
+    io.to(message.conversation.toString()).emit("messageDeleted", {
+      messageId,
+      userId,
+      hardDelete,
+    });
 
-    res.status(200).json({ message: "Message deleted successfully" });
+    if (res) {
+      res.status(200).json({ message: "Message deleted successfully", hardDelete });
+      return { success: true, hardDelete };
+    }
+
+    return { success: true, message: "Message deleted successfully", hardDelete };
   } catch (error) {
     console.error("Error deleting message:", error);
-    res.status(500).json({ message: "Server error" });
+    if (res) return res.status(500).json({ message: "Server error" });
+    socket.emit("deleteMessageError", { message: "Server error" });
+    return { success: false, message: "Server error" };
   }
 };
 
 // Reply to a message
-const replyMessage = async (req, res) => {
+export const replyMessage = async (req, res) => {
   const { conversationId, messageId } = req.params;
   const { text, messageType = "reply" } = req.body;
   const sender = req.user._id;
@@ -424,7 +418,7 @@ const replyMessage = async (req, res) => {
 };
 
 // Get messages with pagination
-const getMessages = async (req, res) => {
+export const getMessages = async (req, res) => {
   const { conversationId } = req.params;
   const { userId, page = 1, limit = 20 } = req.query;
   try {
@@ -436,21 +430,23 @@ const getMessages = async (req, res) => {
     }
 
     if (!userId || !(await isUserInConversation(conversationId, userId))) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to view this conversation" });
+      return res.status(403).json({ message: "Unauthorized to view this conversation" });
     }
 
-    const messages = await Message.find({ conversation: conversationId })
+    const messages = await Message.find({
+      conversation: conversationId,
+      deletedBy: { $ne: userId }, // Exclude messages soft-deleted by the user
+    })
       .populate("sender", "username")
       .populate("receiver", "username")
       .populate("replyTo")
-      .sort({ createdAt: -1 }) // Newest first
+      .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
 
     const totalMessages = await Message.countDocuments({
       conversation: conversationId,
+      deletedBy: { $ne: userId }, // Count only non-soft-deleted messages
     });
 
     return res.status(200).json({
@@ -506,10 +502,4 @@ const getMessages = async (req, res) => {
 //   }
 // };
 
-export {
-  editMessage,
-  deleteMessage,
-  replyMessage,
-  getMessages,
-  markMessagesAsRead,
-};
+;

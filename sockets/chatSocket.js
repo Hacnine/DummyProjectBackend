@@ -1,3 +1,5 @@
+import { deleteMessage, markMessagesAsRead } from "../controllers/messageController.js";
+
 export const registerChatHandlers = (io, socket) => {
   socket.on("joinRoom", (conversationId) => {
     socket.join(conversationId);
@@ -8,7 +10,14 @@ export const registerChatHandlers = (io, socket) => {
   });
 
   socket.on("sendMessage", (message) => {
-    // Emit to all users in the conversation room
     io.to(message.conversationId).emit("receiveMessage", message);
+  });
+
+  socket.on("messageRead", async ({ conversationId, userId }) => {
+    await markMessagesAsRead(conversationId, userId, io);
+  });
+
+  socket.on("deleteMessage", async ({ messageId, userId }) => {
+    await deleteMessage({ io, socket, messageId, userId });
   });
 };
