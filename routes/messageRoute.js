@@ -7,18 +7,22 @@ import {
   replyMessage,
   getMessages,
   markMessagesAsRead,
+  sendEmoji,
 } from "../controllers/messageController.js";
-import upload from "../middlewares/multerConfig.js";
+import  { rawUpload } from "../middlewares/multerConfig.js";
 
 const router = express.Router();
 
 // Routes for messaging
-router.post("/send", isLogin, upload.any(), sendMessage); // Send message for new conversation
-router.post("/send/:conversationId", isLogin, upload.any(), sendMessage); // Send message to existing conversation
+router.post("/send", isLogin, rawUpload.any(), sendMessage); // Send message for new conversation
+router.post("/send/:conversationId", isLogin, rawUpload.any(), sendMessage); // Send message to existing conversation
+router.post("/send-emoji", isLogin, sendEmoji);
+router.post("/send-emoji/:conversationId", isLogin, sendEmoji);
+
 router.put("/edit-message/:messageId", isLogin, editMessage); // Edit a text message
 router.delete("/delete/:messageId", isLogin, deleteMessage); // Soft-delete a message
 router.post(":conversationId/reply/:messageId", isLogin, replyMessage); // Reply to a message
-router.get("/:conversationId", isLogin, getMessages); // Get messages with pagination
+router.get("/get-messages/:conversationId/", isLogin, getMessages); // Get messages with pagination
 router.put("/:conversationId/read", isLogin, markMessagesAsRead); // Mark messages as read
 
 export default router;

@@ -1,11 +1,18 @@
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
+import fs from "fs";
+
+// Ensure uploads directory exists
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
 
 // Configure Multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Ensure this folder exists
+    cb(null, "uploads/"); // Folder for uploaded files
   },
   filename: (req, file, cb) => {
     cb(null, `${uuidv4()}-${file.originalname}`);
@@ -19,7 +26,10 @@ const fileFilter = (req, file, cb) => {
     "image/png",
     "video/mp4",
     "audio/mpeg",
+    "audio/webm",
     "application/pdf",
+    "application/docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
@@ -35,4 +45,26 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-export default upload;
+// Custom middleware to handle Multer errors
+const handleMulterError = (multerUpload) => {
+  return (req, res, next) => {
+    multerUpload(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({
+          success: false,
+          message: err.message || "File upload error",
+        });
+      } else if (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message || "An error occurred during file upload",
+        });
+      }
+      next();
+    });
+  };
+};
+
+// Export both the raw Multer instance and the error-handled middleware
+export const rawUpload = upload; // Raw Multer instance
+export default handleMulterError(upload); // Error-handled middleware

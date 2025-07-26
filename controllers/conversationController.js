@@ -58,7 +58,7 @@ const getAllConversations = async (req, res) => {
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
-            image: user.image || "images/default-avatar.svg",
+            image: user.image ,
           })),
         };
       } else {
@@ -73,7 +73,7 @@ const getAllConversations = async (req, res) => {
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
-            image: user.image || "images/default-avatar.svg",
+            image: user.image ,
           })),
           unreadMessages: 0,
         };
@@ -298,7 +298,7 @@ const getConversationById = async (req, res) => {
       participants: conversation.participants.map((user) => ({
         _id: user._id,
         name: user.name,
-        image: user.image || "images/default-avatar.svg",
+        image: user.image ,
         
       })),
       themeIndex: conversation.themeIndex

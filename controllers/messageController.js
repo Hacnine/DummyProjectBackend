@@ -108,6 +108,110 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+export const sendEmoji = async (req, res) => {
+  const sender = req.user._id; // Sender from authenticated user
+  const { receiver, text, htmlEmoji, emojiType, mediaUrl } = req.body;
+  let { conversationId } = req.params;
+
+  // Validate required fields for custom emojis
+  if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
+    return res.status(400).json({ message: "Text, htmlEmoji, and mediaUrl are required for custom emojis" });
+  }
+
+  // Validate emojiType
+  if (emojiType && !["custom", "standard"].includes(emojiType)) {
+    return res.status(400).json({ message: "Invalid emojiType" });
+  }
+
+  try {
+    let conversation;
+
+    if (!conversationId) {
+      if (!receiver) {
+        return res.status(400).json({ message: "Receiver is required for new conversation" });
+      }
+
+      // Try to find existing one-to-one conversation
+      conversation = await Conversation.findOne({
+        participants: { $all: [sender, receiver], $size: 2 },
+        "group.is_group": false,
+      });
+
+      if (!conversation) {
+        // Create new one-to-one conversation
+        conversation = new Conversation({
+          participants: [
+            new mongoose.Types.ObjectId(sender),
+            new mongoose.Types.ObjectId(receiver),
+          ],
+          senderId: sender,
+          receiverId: receiver,
+          visibility: "private",
+          group: { is_group: false },
+        });
+
+        await conversation.save();
+      }
+
+      conversationId = conversation._id;
+    } else {
+      // Existing conversation
+      conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+    }
+
+    // Determine receiver if not explicitly sent
+    const otherParticipant = conversation.participants.find(
+      (id) => id.toString() !== sender.toString()
+    );
+    const resolvedReceiver = receiver || otherParticipant;
+
+    // Create and save the message
+    const newMessage = new Message({
+      sender,
+      receiver: resolvedReceiver,
+      text: text || htmlEmoji || "", // Fallback to htmlEmoji for standard emojis
+      conversation: conversationId,
+      messageType: "text", // Emojis are treated as text messages
+      htmlEmoji: htmlEmoji || null,
+      emojiType: emojiType || null,
+      media: emojiType === "custom" ? [{ url: mediaUrl, type: "image" }] : [],
+    });
+
+    await newMessage.save();
+
+    // Update last message in conversation
+    conversation.last_message = {
+      message: text || htmlEmoji || "[Emoji]",
+      sender,
+      timestamp: new Date(),
+    };
+
+    // Update unread messages for receiver
+    const unread = conversation.unread_messages.find(
+      (um) => um.user.toString() === resolvedReceiver.toString()
+    );
+
+    if (unread) {
+      unread.count += 1;
+    } else {
+      conversation.unread_messages.push({ user: resolvedReceiver, count: 1 });
+    }
+
+    await conversation.save();
+
+    // Emit real-time socket event
+    req.io.to(resolvedReceiver.toString()).emit("receiveMessage", newMessage);
+
+    res.status(201).json({ message: newMessage, conversationId });
+  } catch (error) {
+    console.error("Error sending emoji:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // Handle Read Messages Event
 const markMessagesAsRead = async (conversationId, userId, io) => {
   try {
@@ -322,78 +426,38 @@ const replyMessage = async (req, res) => {
 // Get messages with pagination
 const getMessages = async (req, res) => {
   const { conversationId } = req.params;
-  const {
-    userId,
-    participant1,
-    participant2,
-    page = 1,
-    limit = 20,
-  } = req.query;
-
+  const { userId, page = 1, limit = 20 } = req.query;
   try {
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
-    if (conversationId && isValidObjectId(conversationId)) {
-      // Fetch messages by conversationId with pagination
-      if (!(await isUserInConversation(conversationId, userId))) {
-        return res
-          .status(403)
-          .json({ message: "Unauthorized to view this conversation" });
-      }
-
-      const messages = await Message.find({ conversation: conversationId })
-        .populate("sender", "username")
-        .populate("receiver", "username")
-        .populate("replyTo")
-        .sort({ createdAt: -1 }) // Newest first
-        .skip((pageNum - 1) * limitNum)
-        .limit(limitNum);
-
-      const totalMessages = await Message.countDocuments({
-        conversation: conversationId,
-      });
-
-      return res.status(200).json({
-        messages,
-        totalPages: Math.ceil(totalMessages / limitNum),
-        currentPage: pageNum,
-      });
-    } else if (
-      participant1 &&
-      participant2 &&
-      isValidObjectId(participant1) &&
-      isValidObjectId(participant2)
-    ) {
-      // Fetch messages by participants with pagination
-      const messages = await Message.find({
-        $or: [
-          { sender: participant1, receiver: participant2 },
-          { sender: participant2, receiver: participant1 },
-        ],
-      })
-        .populate("sender", "username")
-        .populate("receiver", "username")
-        .populate("replyTo")
-        .sort({ createdAt: -1 })
-        .skip((pageNum - 1) * limitNum)
-        .limit(limitNum);
-
-      const totalMessages = await Message.countDocuments({
-        $or: [
-          { sender: participant1, receiver: participant2 },
-          { sender: participant2, receiver: participant1 },
-        ],
-      });
-
-      return res.status(200).json({
-        messages,
-        totalPages: Math.ceil(totalMessages / limitNum),
-        currentPage: pageNum,
-      });
-    } else {
-      return res.status(400).json({ message: "Invalid request parameters" });
+    if (!isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: "Invalid conversation ID" });
     }
+
+    if (!userId || !(await isUserInConversation(conversationId, userId))) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to view this conversation" });
+    }
+
+    const messages = await Message.find({ conversation: conversationId })
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo")
+      .sort({ createdAt: -1 }) // Newest first
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    const totalMessages = await Message.countDocuments({
+      conversation: conversationId,
+    });
+
+    return res.status(200).json({
+      messages,
+      totalPages: Math.ceil(totalMessages / limitNum),
+      currentPage: pageNum,
+    });
   } catch (error) {
     console.error("Error fetching messages:", error);
     return res.status(500).json({ message: "Server error" });
