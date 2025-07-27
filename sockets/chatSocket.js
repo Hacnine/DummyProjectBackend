@@ -5,6 +5,10 @@ export const registerChatHandlers = (io, socket) => {
     socket.join(conversationId);
   });
 
+  socket.on("leaveRoom", (conversationId) => {
+    socket.leave(conversationId);
+  });
+
   socket.on("typing", ({ conversationId, userId, isTyping }) => {
     io.to(conversationId).emit("typing", { userId, isTyping });
   });
@@ -19,5 +23,9 @@ export const registerChatHandlers = (io, socket) => {
 
   socket.on("deleteMessage", async ({ messageId, userId }) => {
     await deleteMessage({ io, socket, messageId, userId });
+  });
+
+  // Handle socket disconnection
+  socket.on("disconnect", () => {
   });
 };

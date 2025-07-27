@@ -28,7 +28,7 @@ const conversationSchema = new Schema(
       },
       name: { type: String },
       intro: { type: String },
-      image: { type: String }, // Group profile picture
+      image: { type: String, default:"/images/cover/default-cover.jpg" }, // Group profile picture
       admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
 
       // Extended fields for classroom functionality
