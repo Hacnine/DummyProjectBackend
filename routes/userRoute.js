@@ -15,9 +15,44 @@ import {
   getUserThemeIndex,
   searchUser,
   deleteUser,
+  updateName,
+  updateEmail,
+  updatePassword,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import rateLimit from "express-rate-limit";
+
+const nameValidation = [
+  body('name')
+    .trim()
+    .notEmpty()
+    .withMessage('Name is required')
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Name must be between 2 and 50 characters')
+];
+
+
+// Validation middleware for email
+const emailValidation = [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Invalid email format')
+    .normalizeEmail()
+];
+
+// Validation middleware for password
+const passwordValidation = [
+  body('password')
+    .trim()
+    .notEmpty()
+    .withMessage('Password is required')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long')
+];
+
 
 // Rate Limiting Middleware
 const generalLimiter = rateLimit({
@@ -74,6 +109,10 @@ userRouter.get("/theme-index", isLogin, getUserThemeIndex);
 userRouter.patch("/theme-index", isLogin, updateUserThemeIndex);
 userRouter.get("/search-user", isLogin, searchUser);
 userRouter.get("/delete-user/:id", deleteUser);
+
+userRouter.patch('/name', isLogin, nameValidation, updateName);
+userRouter.patch('/email', isLogin, emailValidation, updateEmail);
+userRouter.patch('/password', isLogin, passwordValidation, updatePassword);
 
 
 
