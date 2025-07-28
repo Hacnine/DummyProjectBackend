@@ -39,7 +39,8 @@ const register = async (req, res) => {
     }
 
     // Check for existing name (case-insensitive)
-    const existingName = await userModel.findOne({ name: new RegExp(`^${name}$`, "i") });
+    const normalizedName = name.trim().toLowerCase();
+    const existingName = await userModel.findOne({ name: new RegExp(`^${normalizedName}$`, "i") });
     if (existingName) {
       return res.status(400).json({
         error: { message: `'${name}' name is already taken. Choose a different name.` },
@@ -56,10 +57,11 @@ const register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = new userModel({
-      name,
+      name:normalizedName,
       email: normalizedEmail,
       password: passwordHash,
       gender: gender.toLowerCase(),
+      image:`${gender.toLowerCase() === "male"? "/images/avatar/default-avatar.svg":"/images/avatar/womanav1.svg"}`,
       // If no settings exist, make the first user an admin
       isAdmin: !settings,
     });
@@ -106,7 +108,6 @@ const register = async (req, res) => {
   }
 };
 
-
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -117,9 +118,12 @@ const login = async (req, res) => {
         .json({ message: "Email and password are required." });
     }
 
+    // Normalize email to lowercase
+    const normalizedEmail = email.toLowerCase();
+
     // Find user and include password explicitly
     const user = await userModel
-      .findOne({ email })
+      .findOne({ email: normalizedEmail })
       .select(
         "name email gender image bio role account_status is_active last_seen themeIndex fileSendingAllowed password"
       );
@@ -144,13 +148,13 @@ const login = async (req, res) => {
     }
 
     // Log login metadata (optional but useful)
-    console.log("Login attempt", {
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-      user: user._id.toString(),
-    });
+    // console.log("Login attempt", {
+    //   ip: req.ip,
+    //   userAgent: req.headers["user-agent"],
+    //   user: user._id.toString(),
+    // });
 
-    // Update last_seen (optional: add to your schema)
+    // Update last_seen
     await userModel.findByIdAndUpdate(user._id, { last_seen: new Date() });
 
     // Clear old cookies
@@ -209,7 +213,6 @@ const login = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
-
 const logout = async (req, res) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
@@ -277,7 +280,7 @@ export const searchUser = async (req, res) => {
 
     // Fetch paginated results
     const users = await User.find(searchCriteria)
-      .select("name email image")
+      .select("name image")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
