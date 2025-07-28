@@ -13,22 +13,44 @@ const isUserInConversation = async (conversationId, userId) => {
   return conversation?.participants.some((p) => p.equals(userId));
 };
 
-export const sendMessage = async (req, res) => {
-  const sender = req.user._id; // ✅ Sender from authenticated user
-  const { receiver, text } = req.body;
-  let { conversationId } = req.params;
+// Helper to map MIME types to schema's media.type enum
+const mapMimeTypeToMediaType = (mimeType) => {
+  if (!mimeType) return 'file'; // Default to 'file' if MIME type is missing
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  return 'file'; // Fallback for other types (e.g., application/pdf, text/plain)
+};
+
+export const sendMessage = async ({ req, res, io, socket, conversationId, sender, receiver, text, media } = {}) => {
+  // Determine if this is an API or socket call
+  const isSocket = !!(io && socket);
+  const userId = isSocket ? sender : req?.user?._id;
 
   try {
+    if (!userId || !isValidObjectId(userId)) {
+      if (isSocket) {
+        socket.emit("sendMessageError", { message: "Invalid sender ID" });
+        return { success: false, message: "Invalid sender ID" };
+      }
+      return res.status(400).json({ message: "Invalid sender ID" });
+    }
+
+    let resolvedConversationId = conversationId;
     let conversation;
 
-    if (!conversationId) {
-      if (!receiver) {
+    if (!resolvedConversationId) {
+      if (!receiver || !isValidObjectId(receiver)) {
+        if (isSocket) {
+          socket.emit("sendMessageError", { message: "Receiver is required for new conversation" });
+          return { success: false, message: "Receiver is required for new conversation" };
+        }
         return res.status(400).json({ message: "Receiver is required for new conversation" });
       }
 
       // Try to find existing one-to-one conversation
       conversation = await Conversation.findOne({
-        participants: { $all: [sender, receiver], $size: 2 },
+        participants: { $all: [userId, receiver], $size: 2 },
         "group.is_group": false,
       });
 
@@ -36,10 +58,10 @@ export const sendMessage = async (req, res) => {
         // Create new one-to-one conversation
         conversation = new Conversation({
           participants: [
-            new mongoose.Types.ObjectId(sender),
+            new mongoose.Types.ObjectId(userId),
             new mongoose.Types.ObjectId(receiver),
           ],
-          senderId: sender,
+          senderId: userId,
           receiverId: receiver,
           visibility: "private",
           group: { is_group: false },
@@ -48,40 +70,70 @@ export const sendMessage = async (req, res) => {
         await conversation.save();
       }
 
-      conversationId = conversation._id;
+      resolvedConversationId = conversation._id;
     } else {
-      // Existing conversation
-      conversation = await Conversation.findById(conversationId);
+      if (!isValidObjectId(resolvedConversationId)) {
+        if (isSocket) {
+          socket.emit("sendMessageError", { message: "Invalid conversation ID" });
+          return { success: false, message: "Invalid conversation ID" };
+        }
+        return res.status(400).json({ message: "Invalid conversation ID" });
+      }
+
+      conversation = await Conversation.findById(resolvedConversationId);
       if (!conversation) {
+        if (isSocket) {
+          socket.emit("sendMessageError", { message: "Conversation not found" });
+          return { success: false, message: "Conversation not found" };
+        }
         return res.status(404).json({ message: "Conversation not found" });
       }
     }
 
-    // Determine receiver if not explicitly sent (optional fallback)
+    // Verify user is in conversation
+    if (!(await isUserInConversation(resolvedConversationId, userId))) {
+      if (isSocket) {
+        socket.emit("sendMessageError", { message: "Unauthorized to send message in this conversation" });
+        return { success: false, message: "Unauthorized to send message in this conversation" };
+      }
+      return res.status(403).json({ message: "Unauthorized to send message in this conversation" });
+    }
+
+    // Determine receiver
     const otherParticipant = conversation.participants.find(
-      (id) => id.toString() !== sender.toString()
+      (id) => id.toString() !== userId.toString()
     );
     const resolvedReceiver = receiver || otherParticipant;
 
     // Create and save the message
     const newMessage = new Message({
-      sender,
+      sender: userId,
       receiver: resolvedReceiver,
       text,
-      conversation: conversationId,
+      conversation: resolvedConversationId,
+      media: isSocket && media && media.length > 0
+        ? media.map(file => ({
+            url: file.name, // Note: Actual file upload requires API
+            type: mapMimeTypeToMediaType(file.type), // Map MIME type to schema enum
+            filename: file.name,
+            size: file.size
+          }))
+        : req?.file
+          ? [{
+              url: req.file.filename, // Use filename instead of path to store relative path
+              type: mapMimeTypeToMediaType(req.file.mimetype),
+              filename: req.file.originalname,
+              size: req.file.size
+            }]
+          : [],
     });
-
-    if (req.file) {
-      newMessage.media = req.file.path;
-      newMessage.mediaType = req.file.mimetype;
-    }
 
     await newMessage.save();
 
     // Update last message in conversation
     conversation.last_message = {
       message: text || "[Media]",
-      sender,
+      sender: userId,
       timestamp: new Date(),
     };
 
@@ -98,12 +150,27 @@ export const sendMessage = async (req, res) => {
 
     await conversation.save();
 
-    // Emit real-time socket event
-    req.io.to(resolvedReceiver.toString()).emit("receiveMessage", newMessage);
+    // Populate message for response
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo");
 
-    res.status(201).json({ message: newMessage, conversationId });
+    // Emit socket events
+    if (isSocket) {
+      io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
+      socket.emit("sendMessageSuccess", { message: populatedMessage, conversationId: resolvedConversationId });
+      return { success: true, message: populatedMessage, conversationId: resolvedConversationId };
+    } else {
+      req.io.to(resolvedReceiver.toString()).emit("receiveMessage", populatedMessage);
+      res.status(201).json({ message: populatedMessage, conversationId: resolvedConversationId });
+    }
   } catch (error) {
     console.error("Error sending message:", error);
+    if (isSocket) {
+      socket.emit("sendMessageError", { message: error.message || "Server error" });
+      return { success: false, message: error.message || "Server error" };
+    }
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -144,8 +211,6 @@ export const sendEmoji = async (req, res) => {
             new mongoose.Types.ObjectId(sender),
             new mongoose.Types.ObjectId(receiver),
           ],
-          senderId: sender,
-          receiverId: receiver,
           visibility: "private",
           group: { is_group: false },
         });
