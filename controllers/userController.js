@@ -3,13 +3,14 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
-import { validationResult } from "express-validator";
 import { fileURLToPath } from "url";
 import path from "path";
 import User from "../models/userModel.js";
 import { onlineUsers } from "../sockets/onlineUserSocket.js";
 import { createUserApproval } from "../utils/userApprovalMiddleware.js";
 import AdminSettings from "../models/adminSettingsModel.js";
+import asyncHandler from 'express-async-handler';
+import { param, validationResult } from 'express-validator';
 
 const register = async (req, res) => {
   try {
@@ -332,34 +333,37 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-const getUserInfo = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const cacheKey = `user:${userId}`;
-
-    // Check if user data exists in Redis
-    const cachedUser = await redisClient.get(cacheKey);
-    if (cachedUser) {
-      return res.json(JSON.parse(cachedUser)); //  Ensure response is sent
-    }
-
-    // Fetch from MongoDB if not in cache
-    const user = await userModel.findById(userId).select("-password").lean();
-    if (!user) {
-      // console.log("User not found in DB"); //  Debugging log
-      return res.status(404).json({ message: "User not found" }); //  Send 404 response
-    }
-
-    // Store in Redis with 1-hour expiration
-    await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
-    // console.log("User stored in cache:", user); //  Debugging log
-
-    return res.json(user); //  Ensure response is sent
-  } catch (error) {
-    console.error("Error fetching user info:", error);
-    return res.status(500).json({ message: "Failed to get user info" }); //  Return proper error response
+export const getUserInfo = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
-};
+
+  const { userId } = req.params;
+
+  // Ensure the userId is valid
+  if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+    return res.status(400).json({ message: 'Invalid user ID' });
+  }
+
+  // Fetch user with specific fields only
+  const user = await User.findById(userId).select('name email bio image role is_active last_seen');
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+      name: user.name,
+      email: user.email,
+      bio: user.bio || '',
+      image: user.image || '',
+      role: user.role,
+      is_active: user.is_active,
+      last_seen: user.last_seen,
+    },
+  );
+});
 
 const updateUserInfo = async (req, res) => {
   const { userId } = req.params;
@@ -469,12 +473,103 @@ export const updateUserThemeIndex = async (req, res) => {
   }
 };
 
+
+// Update user name
+export const updateName = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name } = req.body;
+  const userId = req.user._id; // Assuming user ID is available from authentication middleware
+
+  // Check if name already exists
+  const existingUser = await User.findOne({ name, _id: { $ne: userId } });
+  if (existingUser) {
+    return res.status(400).json({ message: 'Name already taken' });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { name, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Name updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+// Update user email
+export const updateEmail = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { email } = req.body;
+  const userId = req.user._id;
+
+  // Check if email already exists
+  const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+  if (existingUser) {
+    return res.status(400).json({ message: 'Email already taken' });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { email, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Email updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+// Update user password
+export const updatePassword = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { password } = req.body;
+  const userId = req.user._id;
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { password, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Password updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+
 export {
   register,
   login,
   logout,
   getAllUsers,
-  getUserInfo,
   updateUserInfo,
   refreshToken,
 };
