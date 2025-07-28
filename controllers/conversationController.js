@@ -18,8 +18,6 @@ const createConversation = async (req, res) => {
     // If no conversation exists, create a new one
     const newConversation = new Conversation({
       participants: [senderId, receiverId],
-      senderId: senderId,
-      receiverId: receiverId,
     });
 
     // save status in redis
@@ -64,8 +62,6 @@ const getAllConversations = async (req, res) => {
       } else {
         return {
           _id: convo._id,
-          senderId: convo.senderId,
-          receiverId: convo.receiverId,
           status: convo.status,
           last_message: convo.last_message,
           is_group: false,

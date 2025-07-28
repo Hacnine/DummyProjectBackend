@@ -6,12 +6,10 @@ const conversationSchema = new Schema(
     participants: [
       { type: Schema.Types.ObjectId, ref: "User", required: true },
     ],
-    receiverId: { type: Schema.Types.ObjectId, ref: "User" },
-    senderId: { type: Schema.Types.ObjectId, ref: "User" },
     status: {
       type: String,
       enum: ["pending", "accepted", "rejected"],
-      default: "pending",
+      default: null,
     },
     visibility: {
       type: String,
@@ -28,10 +26,9 @@ const conversationSchema = new Schema(
       },
       name: { type: String },
       intro: { type: String },
-      image: { type: String, default:"/images/cover/default-cover.jpg" }, // Group profile picture
-      admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
+      image: { type: String, default:"/images/cover/default-cover.jpg" }, 
+      admins: [{ type: Schema.Types.ObjectId, ref: "User" }], 
 
-      // Extended fields for classroom functionality
       classType: {
         type: String,
         enum: ["regular", "weekly", "multi-weekly", "monthly", "exam"],
