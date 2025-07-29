@@ -26,6 +26,7 @@ import { initSocketServer } from "./sockets/index.js";
 import { startCronJobs } from "./schedulers/sessionCreation.js"; 
 import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletion.js';
 import upload from './middlewares/multerConfig.js';
+import path from 'path';
 
 dotenv.config();
 
@@ -103,6 +104,9 @@ app.use("/class-group/attendance", attendanceRoutes);
 app.use("/class-group/alertness", alertnessRoutes);
 app.use("/class-group/notification", notificationRoutes);
 app.use("/class-group/files", fileRoutes);
+
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 // ...existing code...
 
 // Connect to DB and start server

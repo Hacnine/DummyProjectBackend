@@ -1,8 +1,6 @@
 import Conversation from "../models/conversationModel.js";
 import Message from "../models/messageModel.js";
-import File from "../models/fileModel.js"; // Added for file handling
 import mongoose from "mongoose";
-import JoinRequest from "../models/joinRequestModel.js";
 
 // Helper to validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -15,125 +13,251 @@ const isUserInConversation = async (conversationId, userId) => {
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
-  if (!mimeType) return 'file'; // Default to 'file' if MIME type is missing
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType.startsWith('video/')) return 'video';
-  if (mimeType.startsWith('audio/')) return 'audio';
-  return 'file'; // Fallback for other types (e.g., application/pdf, text/plain)
+  if (!mimeType) return "file";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "file";
 };
 
-export const sendMessage = async ({ req, res, io, socket, conversationId, sender, receiver, text, media } = {}) => {
-  // Determine if this is an API or socket call
-  const isSocket = !!(io && socket);
-  const userId = isSocket ? sender : req?.user?._id;
+// Send file and/or text message via API
+export const sendFileMessage = async (req, res) => {
+  const userId = req?.user?._id;
+  const resolvedText = req?.body?.text || null;
+  const resolvedReceiver = req?.body?.receiver;
+  const resolvedConversationId =
+    req?.params?.conversationId || req?.body?.conversationId;
+  let mediaFiles = [];
 
   try {
+    // Validate user ID
     if (!userId || !isValidObjectId(userId)) {
-      if (isSocket) {
-        socket.emit("sendMessageError", { message: "Invalid sender ID" });
-        return { success: false, message: "Invalid sender ID" };
-      }
       return res.status(400).json({ message: "Invalid sender ID" });
     }
 
-    let resolvedConversationId = conversationId;
+    // Handle media files
+    if (req?.files?.length > 0) {
+      mediaFiles = req.files.map((file) => ({
+        url: file.filename,
+        type: mapMimeTypeToMediaType(file.mimetype),
+        filename: file.originalname,
+        size: file.size,
+      }));
+    }
+
     let conversation;
 
+    // Handle conversation creation or retrieval
     if (!resolvedConversationId) {
-      if (!receiver || !isValidObjectId(receiver)) {
-        if (isSocket) {
-          socket.emit("sendMessageError", { message: "Receiver is required for new conversation" });
-          return { success: false, message: "Receiver is required for new conversation" };
-        }
-        return res.status(400).json({ message: "Receiver is required for new conversation" });
+      if (!resolvedReceiver || !isValidObjectId(resolvedReceiver)) {
+        return res
+          .status(400)
+          .json({ message: "Receiver is required for new conversation" });
       }
 
-      // Try to find existing one-to-one conversation
+      // Find or create one-to-one conversation
       conversation = await Conversation.findOne({
-        participants: { $all: [userId, receiver], $size: 2 },
+        participants: { $all: [userId, resolvedReceiver], $size: 2 },
         "group.is_group": false,
       });
 
       if (!conversation) {
-        // Create new one-to-one conversation
         conversation = new Conversation({
           participants: [
             new mongoose.Types.ObjectId(userId),
-            new mongoose.Types.ObjectId(receiver),
+            new mongoose.Types.ObjectId(resolvedReceiver),
           ],
           senderId: userId,
-          receiverId: receiver,
+          receiverId: resolvedReceiver,
           visibility: "private",
           group: { is_group: false },
         });
-
         await conversation.save();
       }
 
       resolvedConversationId = conversation._id;
     } else {
       if (!isValidObjectId(resolvedConversationId)) {
-        if (isSocket) {
-          socket.emit("sendMessageError", { message: "Invalid conversation ID" });
-          return { success: false, message: "Invalid conversation ID" };
-        }
         return res.status(400).json({ message: "Invalid conversation ID" });
       }
 
       conversation = await Conversation.findById(resolvedConversationId);
       if (!conversation) {
-        if (isSocket) {
-          socket.emit("sendMessageError", { message: "Conversation not found" });
-          return { success: false, message: "Conversation not found" };
-        }
         return res.status(404).json({ message: "Conversation not found" });
       }
     }
 
     // Verify user is in conversation
     if (!(await isUserInConversation(resolvedConversationId, userId))) {
-      if (isSocket) {
-        socket.emit("sendMessageError", { message: "Unauthorized to send message in this conversation" });
-        return { success: false, message: "Unauthorized to send message in this conversation" };
-      }
-      return res.status(403).json({ message: "Unauthorized to send message in this conversation" });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to send message in this conversation" });
     }
 
     // Determine receiver
     const otherParticipant = conversation.participants.find(
       (id) => id.toString() !== userId.toString()
     );
-    const resolvedReceiver = receiver || otherParticipant;
+    const finalReceiver = resolvedReceiver || otherParticipant;
+
+    let messageType = "text"; // Default to "text" if no media
+    if (mediaFiles.length > 0) {
+      // Use the type of the first media file (assuming single-type uploads for simplicity)
+      messageType = mediaFiles[0].type || "file"; // Fallback to "file" if type is undefined
+    }
 
     // Create and save the message
     const newMessage = new Message({
       sender: userId,
+      receiver: finalReceiver,
+      conversation: resolvedConversationId,
+      text: resolvedText || null, // Use null instead of empty string
+      media: mediaFiles,
+      messageType, // Explicitly set messageType
+    });
+console.log(newMessage)
+    await newMessage.save();
+
+    // Update last message in conversation
+    conversation.last_message = {
+      message: resolvedText || "[Media]",
+      sender: userId,
+      timestamp: new Date(),
+    };
+
+    // Update unread messages for receiver
+    const unread = conversation.unread_messages.find(
+      (um) => um.user.toString() === finalReceiver.toString()
+    );
+
+    if (unread) {
+      unread.count += 1;
+    } else {
+      conversation.unread_messages.push({ user: finalReceiver, count: 1 });
+    }
+
+    await conversation.save();
+
+    // Populate message for response
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo");
+
+    // Emit socket event to the entire conversation room
+    console.log("Emitting receiveMessage to room:", resolvedConversationId);
+    req.io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
+
+    // Send response to client
+    res
+      .status(201)
+      .json({
+        message: populatedMessage,
+        conversationId: resolvedConversationId,
+      });
+  } catch (error) {
+    console.error("Error sending file message:", error);
+    res.status(500).json({ message: error.message || "Server error" });
+  }
+};
+
+// Send text-only message via Socket.IO (unchanged)
+export const sendTextMessage = async ({
+  io,
+  socket,
+  conversationId,
+  sender,
+  receiver,
+  text,
+}) => {
+  try {
+    // Validate sender ID
+    if (!sender || !isValidObjectId(sender)) {
+      socket.emit("sendMessageError", { message: "Invalid sender ID" });
+      return { success: false, message: "Invalid sender ID" };
+    }
+
+    let resolvedConversationId = conversationId;
+    let conversation;
+
+    // Handle conversation creation or retrieval
+    if (!resolvedConversationId) {
+      if (!receiver || !isValidObjectId(receiver)) {
+        socket.emit("sendMessageError", {
+          message: "Receiver is required for new conversation",
+        });
+        return {
+          success: false,
+          message: "Receiver is required for new conversation",
+        };
+      }
+
+      // Find or create one-to-one conversation
+      conversation = await Conversation.findOne({
+        participants: { $all: [sender, receiver], $size: 2 },
+        "group.is_group": false,
+      });
+
+      if (!conversation) {
+        conversation = new Conversation({
+          participants: [
+            new mongoose.Types.ObjectId(sender),
+            new mongoose.Types.ObjectId(receiver),
+          ],
+          senderId: sender,
+          receiverId: receiver,
+          visibility: "private",
+          group: { is_group: false },
+        });
+        await conversation.save();
+      }
+
+      resolvedConversationId = conversation._id;
+    } else {
+      if (!isValidObjectId(resolvedConversationId)) {
+        socket.emit("sendMessageError", { message: "Invalid conversation ID" });
+        return { success: false, message: "Invalid conversation ID" };
+      }
+
+      conversation = await Conversation.findById(resolvedConversationId);
+      if (!conversation) {
+        socket.emit("sendMessageError", { message: "Conversation not found" });
+        return { success: false, message: "Conversation not found" };
+      }
+    }
+
+    // Verify sender is in conversation
+    if (!(await isUserInConversation(resolvedConversationId, sender))) {
+      socket.emit("sendMessageError", {
+        message: "Unauthorized to send message in this conversation",
+      });
+      return {
+        success: false,
+        message: "Unauthorized to send message in this conversation",
+      };
+    }
+
+    // Determine receiver
+    const otherParticipant = conversation.participants.find(
+      (id) => id.toString() !== sender.toString()
+    );
+    const resolvedReceiver = receiver || otherParticipant;
+
+    // Create and save the message
+    const newMessage = new Message({
+      sender,
       receiver: resolvedReceiver,
       text,
       conversation: resolvedConversationId,
-      media: isSocket && media && media.length > 0
-        ? media.map(file => ({
-            url: file.name, // Note: Actual file upload requires API
-            type: mapMimeTypeToMediaType(file.type), // Map MIME type to schema enum
-            filename: file.name,
-            size: file.size
-          }))
-        : req?.file
-          ? [{
-              url: req.file.filename, // Use filename instead of path to store relative path
-              type: mapMimeTypeToMediaType(req.file.mimetype),
-              filename: req.file.originalname,
-              size: req.file.size
-            }]
-          : [],
+      media: [],
     });
 
     await newMessage.save();
 
     // Update last message in conversation
     conversation.last_message = {
-      message: text || "[Media]",
-      sender: userId,
+      message: text,
+      sender,
       timestamp: new Date(),
     };
 
@@ -157,21 +281,24 @@ export const sendMessage = async ({ req, res, io, socket, conversationId, sender
       .populate("replyTo");
 
     // Emit socket events
-    if (isSocket) {
-      io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
-      socket.emit("sendMessageSuccess", { message: populatedMessage, conversationId: resolvedConversationId });
-      return { success: true, message: populatedMessage, conversationId: resolvedConversationId };
-    } else {
-      req.io.to(resolvedReceiver.toString()).emit("receiveMessage", populatedMessage);
-      res.status(201).json({ message: populatedMessage, conversationId: resolvedConversationId });
-    }
+    console.log("Emitting receiveMessage to room:", resolvedConversationId);
+    io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
+    socket.emit("sendMessageSuccess", {
+      message: populatedMessage,
+      conversationId: resolvedConversationId,
+    });
+
+    return {
+      success: true,
+      message: populatedMessage,
+      conversationId: resolvedConversationId,
+    };
   } catch (error) {
-    console.error("Error sending message:", error);
-    if (isSocket) {
-      socket.emit("sendMessageError", { message: error.message || "Server error" });
-      return { success: false, message: error.message || "Server error" };
-    }
-    res.status(500).json({ message: "Server error" });
+    console.error("Error sending text message:", error);
+    socket.emit("sendMessageError", {
+      message: error.message || "Server error",
+    });
+    return { success: false, message: error.message || "Server error" };
   }
 };
 
@@ -182,7 +309,11 @@ export const sendEmoji = async (req, res) => {
 
   // Validate required fields for custom emojis
   if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
-    return res.status(400).json({ message: "Text, htmlEmoji, and mediaUrl are required for custom emojis" });
+    return res
+      .status(400)
+      .json({
+        message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
+      });
   }
 
   // Validate emojiType
@@ -195,7 +326,9 @@ export const sendEmoji = async (req, res) => {
 
     if (!conversationId) {
       if (!receiver) {
-        return res.status(400).json({ message: "Receiver is required for new conversation" });
+        return res
+          .status(400)
+          .json({ message: "Receiver is required for new conversation" });
       }
 
       // Try to find existing one-to-one conversation
@@ -348,7 +481,14 @@ export const editMessage = async (req, res) => {
 };
 
 // Delete a message (soft delete)
-export const deleteMessage = async ({ io, socket, messageId, userId, req, res }) => {
+export const deleteMessage = async ({
+  io,
+  socket,
+  messageId,
+  userId,
+  req,
+  res,
+}) => {
   try {
     if (!isValidObjectId(messageId)) {
       if (res) return res.status(400).json({ message: "Invalid message ID" });
@@ -363,9 +503,16 @@ export const deleteMessage = async ({ io, socket, messageId, userId, req, res })
       return { success: false, message: "Message not found" };
     }
 
-    if (!(await isUserInConversation(message.conversation.toString(), userId))) {
-      if (res) return res.status(403).json({ message: "Unauthorized to delete this message" });
-      socket.emit("deleteMessageError", { message: "Unauthorized to delete this message" });
+    if (
+      !(await isUserInConversation(message.conversation.toString(), userId))
+    ) {
+      if (res)
+        return res
+          .status(403)
+          .json({ message: "Unauthorized to delete this message" });
+      socket.emit("deleteMessageError", {
+        message: "Unauthorized to delete this message",
+      });
       return { success: false, message: "Unauthorized to delete this message" };
     }
 
@@ -391,11 +538,17 @@ export const deleteMessage = async ({ io, socket, messageId, userId, req, res })
     });
 
     if (res) {
-      res.status(200).json({ message: "Message deleted successfully", hardDelete });
+      res
+        .status(200)
+        .json({ message: "Message deleted successfully", hardDelete });
       return { success: true, hardDelete };
     }
 
-    return { success: true, message: "Message deleted successfully", hardDelete };
+    return {
+      success: true,
+      message: "Message deleted successfully",
+      hardDelete,
+    };
   } catch (error) {
     console.error("Error deleting message:", error);
     if (res) return res.status(500).json({ message: "Server error" });
@@ -495,7 +648,9 @@ export const getMessages = async (req, res) => {
     }
 
     if (!userId || !(await isUserInConversation(conversationId, userId))) {
-      return res.status(403).json({ message: "Unauthorized to view this conversation" });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to view this conversation" });
     }
 
     const messages = await Message.find({
@@ -566,5 +721,3 @@ export const getMessages = async (req, res) => {
 //     res.status(500).json({ message: "Server error" });
 //   }
 // };
-
-;

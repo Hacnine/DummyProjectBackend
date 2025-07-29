@@ -22,7 +22,7 @@ const messageSchema = new Schema(
 
     text: {
       type: String,
-      default: "",
+      default:null
     },
 
     messageType: {
@@ -33,11 +33,11 @@ const messageSchema = new Schema(
 
     media: [
       {
-        url: { type: String, required: true },
+        url: { type: String, required: false },
         type: {
           type: String,
           enum: ["image", "video", "audio", "file"],
-          required: true,
+          required: false,
         },
         filename: { type: String },
         size: { type: Number }, // bytes

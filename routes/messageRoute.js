@@ -1,7 +1,7 @@
 import express from "express";
 import { isLogin } from "../middlewares/auth.middleware.js";
 import {
-  sendMessage,
+  sendFileMessage,
   editMessage,
   deleteMessage,
   replyMessage,
@@ -14,8 +14,8 @@ import  { rawUpload } from "../middlewares/multerConfig.js";
 const router = express.Router();
 
 // Routes for messaging
-router.post("/send", isLogin, rawUpload.any(), sendMessage); // Send message for new conversation
-router.post("/send/:conversationId", isLogin, rawUpload.any(), sendMessage); // Send message to existing conversation
+router.post("/send", isLogin, rawUpload.any(), sendFileMessage); // Send message for new conversation
+router.post("/send/:conversationId", isLogin, rawUpload.any(), sendFileMessage); // Send message to existing conversation
 router.post("/send-emoji", isLogin, sendEmoji);
 router.post("/send-emoji/:conversationId", isLogin, sendEmoji);
 
