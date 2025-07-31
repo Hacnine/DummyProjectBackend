@@ -22,7 +22,7 @@ const messageSchema = new Schema(
 
     text: {
       type: String,
-      default:null
+      default: null,
     },
 
     messageType: {
@@ -60,6 +60,11 @@ const messageSchema = new Schema(
       ref: "Message",
     }, // Quoted reply
 
+    status: {
+      type: String,
+      enum: ["sending", "sent", "delivered", "failed"],
+      default: "sending",
+    },
     readBy: [
       {
         user: { type: Schema.Types.ObjectId, ref: "User" },
@@ -79,6 +84,10 @@ const messageSchema = new Schema(
         editedAt: { type: Date, default: Date.now },
       },
     ],
+    scheduledDeletionTime: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -91,6 +100,7 @@ messageSchema.index({ sender: 1 });
 messageSchema.index({ messageType: 1 });
 messageSchema.index({ "media.type": 1 });
 messageSchema.index({ emojiType: 1 }); // Optional: Index for faster emojiType queries
+messageSchema.index({ scheduledDeletionTime: 1 });
 
 const Message = mongoose.model("Message", messageSchema);
 export default Message;

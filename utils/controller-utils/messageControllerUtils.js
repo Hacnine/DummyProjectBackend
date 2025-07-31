@@ -1,0 +1,86 @@
+import mongoose from "mongoose";
+import Conversation from "../../models/conversationModel.js";
+
+// Helper to validate ObjectId
+export const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+// Helper to check if user is a conversation participant
+export const isUserInConversation = async (conversationId, userId) => {
+  const conversation = await Conversation.findById(conversationId);
+  return conversation?.participants.some((p) => p.equals(userId));
+};
+
+
+export const findOrCreateConversation = async (userId, receiverId, conversationId) => {
+  let conversation;
+
+  if (!conversationId) {
+    // New conversation (1-to-1)
+    if (!receiverId || !isValidObjectId(receiverId)) {
+      throw new Error("Receiver is required for new conversation");
+    }
+
+    conversation = await Conversation.findOne({
+      participants: { $all: [userId, receiverId], $size: 2 },
+      "group.is_group": false,
+    });
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        participants: [userId, receiverId],
+        visibility: "private",
+        group: { is_group: false },
+      });
+    }
+  } else {
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation ID");
+    }
+
+    conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+  }
+
+  return conversation;
+};
+
+export const verifyUserInConversation = async (conversation, userId) => {
+  const isParticipant = conversation.participants.some(
+    (id) => id.toString() === userId.toString()
+  );
+  if (!isParticipant) throw new Error("Unauthorized to send message in this conversation");
+};
+
+export const computeDeletionTime = (conversation) => {
+  const deleteAfterHours = conversation.autoDeleteMessagesAfter || 24;
+  return new Date(Date.now() + deleteAfterHours * 60 * 60 * 1000);
+};
+
+export const updateConversationState = async (conversation, senderId, lastText) => {
+  // Update last message details
+  conversation.last_message = {
+    message: lastText,
+    sender: senderId,
+    timestamp: new Date(),
+  };
+
+  // Update unread count for all participants except sender
+  conversation.participants.forEach((participantId) => {
+    if (participantId.toString() === senderId.toString()) return;
+
+    const existingUnread = conversation.unread_messages.find(
+      (um) => um.user.toString() === participantId.toString()
+    );
+
+    if (existingUnread) {
+      existingUnread.count += 1;
+    } else {
+      conversation.unread_messages.push({ user: participantId, count: 1 });
+    }
+  });
+
+  await conversation.save();
+};
+

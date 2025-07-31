@@ -23,10 +23,11 @@ import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import { initSocketServer } from "./sockets/index.js";
-import { startCronJobs } from "./schedulers/sessionCreation.js"; 
-import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletion.js';
+import { startCronJobs } from "./schedulers/sessionCreationJob.js"; 
+import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletionJob.js';
 import upload from './middlewares/multerConfig.js';
 import path from 'path';
+import messageCleanupJob from './schedulers/messageCleanupJob.js';
 
 dotenv.config();
 
@@ -107,11 +108,11 @@ app.use("/class-group/files", fileRoutes);
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// ...existing code...
 
 // Connect to DB and start server
 connectDB(DATABASE_URL)
   .then(() => {
+    messageCleanupJob.start();
     startCronJobs();
     startCronJobsForScheduledDeletion();
     server.listen(port, () => console.log(`Server running on port ${port}`));

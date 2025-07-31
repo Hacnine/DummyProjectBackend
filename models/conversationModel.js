@@ -26,8 +26,8 @@ const conversationSchema = new Schema(
       },
       name: { type: String },
       intro: { type: String },
-      image: { type: String, default:"/images/cover/default-cover.jpg" }, 
-      admins: [{ type: Schema.Types.ObjectId, ref: "User" }], 
+      image: { type: String, default: "/images/cover/default-cover.jpg" },
+      admins: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
       classType: {
         type: String,
@@ -71,6 +71,11 @@ const conversationSchema = new Schema(
         count: { type: Number, default: 0 },
       },
     ],
+    autoDeleteMessagesAfter: {
+      type: Number, // in hours
+      default: 24,
+      min: 1,
+    },
   },
   { timestamps: true }
 );

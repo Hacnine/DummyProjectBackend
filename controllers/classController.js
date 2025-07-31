@@ -7,7 +7,7 @@ import User from "../models/userModel.js";
 import { isValidTimeFormat } from "../utils/timeformatValidation.js";
 import moment from "moment";
 import mongoose from "mongoose";
-import { scheduleSessionCronForClass } from "../schedulers/sessionCreation.js";
+import { scheduleSessionCronForClass } from "../schedulers/sessionCreationJob.js";
 
 export const createClass = async (req, res) => {
   try {
