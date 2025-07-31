@@ -8,6 +8,7 @@ import {
   getMessages,
   markMessagesAsRead,
   sendEmoji,
+  getConversationImages,
 } from "../controllers/messageController.js";
 import  { rawUpload } from "../middlewares/multerConfig.js";
 
@@ -22,7 +23,8 @@ router.post("/send-emoji/:conversationId", isLogin, sendEmoji);
 router.put("/edit-message/:messageId", isLogin, editMessage); // Edit a text message
 router.delete("/delete/:messageId", isLogin, deleteMessage); // Soft-delete a message
 router.post(":conversationId/reply/:messageId", isLogin, replyMessage); // Reply to a message
-router.get("/get-messages/:conversationId/", isLogin, getMessages); // Get messages with pagination
+router.get("/get-messages/:conversationId/", isLogin, getMessages); // Get image messages with pagination
+router.get("/:conversationId/images", getConversationImages);
 router.put("/:conversationId/read", isLogin, markMessagesAsRead); // Mark messages as read
 
 export default router;

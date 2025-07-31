@@ -1,15 +1,14 @@
+import { isValidObjectId } from "mongoose";
 import Conversation from "../models/conversationModel.js";
 import Message from "../models/messageModel.js";
 import mongoose from "mongoose";
-
-// Helper to validate ObjectId
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-
-// Helper to check if user is a conversation participant
-const isUserInConversation = async (conversationId, userId) => {
-  const conversation = await Conversation.findById(conversationId);
-  return conversation?.participants.some((p) => p.equals(userId));
-};
+import {
+  isUserInConversation,
+  findOrCreateConversation,
+  verifyUserInConversation,
+  computeDeletionTime,
+  updateConversationState,
+} from "../utils/controller-utils/messageControllerUtils.js";
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
@@ -23,19 +22,38 @@ const mapMimeTypeToMediaType = (mimeType) => {
 // Send file and/or text message via API
 export const sendFileMessage = async (req, res) => {
   const userId = req?.user?._id;
-  const resolvedText = req?.body?.text || null;
-  const resolvedReceiver = req?.body?.receiver;
-  const resolvedConversationId =
-    req?.params?.conversationId || req?.body?.conversationId;
-  let mediaFiles = [];
+  const resolvedReceiver = req.body.receiver;
+  const resolvedText = req.body.text || null;
+  let resolvedConversationId = req.params.conversationId || req.body.conversationId;
 
   try {
-    // Validate user ID
+    // Validate userId
     if (!userId || !isValidObjectId(userId)) {
       return res.status(400).json({ message: "Invalid sender ID" });
     }
 
-    // Handle media files
+    // Verify Socket.IO instance
+    if (!req.io) {
+      console.error("sendFileMessage: Socket.IO instance (req.io) is undefined");
+      return res.status(500).json({ message: "Socket.IO not initialized" });
+    }
+
+    const conversation = await findOrCreateConversation(
+      userId,
+      resolvedReceiver,
+      resolvedConversationId
+    );
+    resolvedConversationId = conversation._id.toString(); // Convert ObjectId to string
+    console.log("sendFileMessage: Conversation ID:", resolvedConversationId);
+
+    await verifyUserInConversation(conversation, userId);
+
+    const otherParticipant = conversation.participants.find(
+      (id) => id.toString() !== userId.toString()
+    );
+    const finalReceiver = resolvedReceiver || otherParticipant;
+
+    let mediaFiles = [];
     if (req?.files?.length > 0) {
       mediaFiles = req.files.map((file) => ({
         url: file.filename,
@@ -45,118 +63,47 @@ export const sendFileMessage = async (req, res) => {
       }));
     }
 
-    let conversation;
+    const uniqueTypes = [...new Set(mediaFiles.map((f) => f.type))];
+    let messageType = "text";
+    if (uniqueTypes.length === 1) messageType = uniqueTypes[0];
+    else if (uniqueTypes.length > 1) messageType = "mixed";
 
-    // Handle conversation creation or retrieval
-    if (!resolvedConversationId) {
-      if (!resolvedReceiver || !isValidObjectId(resolvedReceiver)) {
-        return res
-          .status(400)
-          .json({ message: "Receiver is required for new conversation" });
-      }
-
-      // Find or create one-to-one conversation
-      conversation = await Conversation.findOne({
-        participants: { $all: [userId, resolvedReceiver], $size: 2 },
-        "group.is_group": false,
-      });
-
-      if (!conversation) {
-        conversation = new Conversation({
-          participants: [
-            new mongoose.Types.ObjectId(userId),
-            new mongoose.Types.ObjectId(resolvedReceiver),
-          ],
-          senderId: userId,
-          receiverId: resolvedReceiver,
-          visibility: "private",
-          group: { is_group: false },
-        });
-        await conversation.save();
-      }
-
-      resolvedConversationId = conversation._id;
-    } else {
-      if (!isValidObjectId(resolvedConversationId)) {
-        return res.status(400).json({ message: "Invalid conversation ID" });
-      }
-
-      conversation = await Conversation.findById(resolvedConversationId);
-      if (!conversation) {
-        return res.status(404).json({ message: "Conversation not found" });
-      }
-    }
-
-    // Verify user is in conversation
-    if (!(await isUserInConversation(resolvedConversationId, userId))) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to send message in this conversation" });
-    }
-
-    // Determine receiver
-    const otherParticipant = conversation.participants.find(
-      (id) => id.toString() !== userId.toString()
-    );
-    const finalReceiver = resolvedReceiver || otherParticipant;
-
-    let messageType = "text"; // Default to "text" if no media
-    if (mediaFiles.length > 0) {
-      // Use the type of the first media file (assuming single-type uploads for simplicity)
-      messageType = mediaFiles[0].type || "file"; // Fallback to "file" if type is undefined
-    }
-
-    // Create and save the message
-    const newMessage = new Message({
+    const newMessage = await Message.create({
       sender: userId,
       receiver: finalReceiver,
       conversation: resolvedConversationId,
-      text: resolvedText || null, // Use null instead of empty string
+      text: resolvedText,
       media: mediaFiles,
-      messageType, // Explicitly set messageType
+      messageType,
+      scheduledDeletionTime: computeDeletionTime(conversation),
     });
-console.log(newMessage)
-    await newMessage.save();
 
-    // Update last message in conversation
-    conversation.last_message = {
-      message: resolvedText || "[Media]",
-      sender: userId,
-      timestamp: new Date(),
-    };
-
-    // Update unread messages for receiver
-    const unread = conversation.unread_messages.find(
-      (um) => um.user.toString() === finalReceiver.toString()
+    await updateConversationState(
+      conversation,
+      userId,
+      resolvedText || "[Media]"
     );
 
-    if (unread) {
-      unread.count += 1;
-    } else {
-      conversation.unread_messages.push({ user: finalReceiver, count: 1 });
-    }
-
-    await conversation.save();
-
-    // Populate message for response
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
       .populate("receiver", "username")
       .populate("replyTo");
 
-    // Emit socket event to the entire conversation room
-    console.log("Emitting receiveMessage to room:", resolvedConversationId);
+    if (!populatedMessage) {
+      console.error("sendFileMessage: Failed to populate message", newMessage._id);
+      return res.status(500).json({ message: "Failed to populate message" });
+    }
+
+    // Emit Socket.IO event
+    console.log("sendFileMessage: Emitting receiveMessage to room:", resolvedConversationId);
     req.io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
 
-    // Send response to client
-    res
-      .status(201)
-      .json({
-        message: populatedMessage,
-        conversationId: resolvedConversationId,
-      });
+    res.status(201).json({
+      message: populatedMessage,
+      conversationId: resolvedConversationId,
+    });
   } catch (error) {
-    console.error("Error sending file message:", error);
+    console.error("sendFileMessage: Error:", error);
     res.status(500).json({ message: error.message || "Server error" });
   }
 };
@@ -171,117 +118,58 @@ export const sendTextMessage = async ({
   text,
 }) => {
   try {
-    // Validate sender ID
+    if(!text) return { success: false, message: "Message can not be empty." };
+    // Validate sender
     if (!sender || !isValidObjectId(sender)) {
       socket.emit("sendMessageError", { message: "Invalid sender ID" });
       return { success: false, message: "Invalid sender ID" };
     }
 
-    let resolvedConversationId = conversationId;
-    let conversation;
-
-    // Handle conversation creation or retrieval
-    if (!resolvedConversationId) {
-      if (!receiver || !isValidObjectId(receiver)) {
-        socket.emit("sendMessageError", {
-          message: "Receiver is required for new conversation",
-        });
-        return {
-          success: false,
-          message: "Receiver is required for new conversation",
-        };
-      }
-
-      // Find or create one-to-one conversation
-      conversation = await Conversation.findOne({
-        participants: { $all: [sender, receiver], $size: 2 },
-        "group.is_group": false,
-      });
-
-      if (!conversation) {
-        conversation = new Conversation({
-          participants: [
-            new mongoose.Types.ObjectId(sender),
-            new mongoose.Types.ObjectId(receiver),
-          ],
-          senderId: sender,
-          receiverId: receiver,
-          visibility: "private",
-          group: { is_group: false },
-        });
-        await conversation.save();
-      }
-
-      resolvedConversationId = conversation._id;
-    } else {
-      if (!isValidObjectId(resolvedConversationId)) {
-        socket.emit("sendMessageError", { message: "Invalid conversation ID" });
-        return { success: false, message: "Invalid conversation ID" };
-      }
-
-      conversation = await Conversation.findById(resolvedConversationId);
-      if (!conversation) {
-        socket.emit("sendMessageError", { message: "Conversation not found" });
-        return { success: false, message: "Conversation not found" };
-      }
+    // Verify Socket.IO instance
+    if (!io) {
+      console.error("sendTextMessage: Socket.IO instance (io) is undefined");
+      socket.emit("sendMessageError", { message: "Socket.IO not initialized" });
+      return { success: false, message: "Socket.IO not initialized" };
     }
 
-    // Verify sender is in conversation
-    if (!(await isUserInConversation(resolvedConversationId, sender))) {
-      socket.emit("sendMessageError", {
-        message: "Unauthorized to send message in this conversation",
-      });
-      return {
-        success: false,
-        message: "Unauthorized to send message in this conversation",
-      };
-    }
+    const conversation = await findOrCreateConversation(
+      sender,
+      receiver,
+      conversationId
+    );
+    const resolvedConversationId = conversation._id.toString(); // Convert ObjectId to string
+    console.log("sendTextMessage: Conversation ID:", resolvedConversationId);
 
-    // Determine receiver
+    await verifyUserInConversation(conversation, sender);
+
     const otherParticipant = conversation.participants.find(
       (id) => id.toString() !== sender.toString()
     );
-    const resolvedReceiver = receiver || otherParticipant;
+    const finalReceiver = receiver || otherParticipant;
 
-    // Create and save the message
-    const newMessage = new Message({
+    const newMessage = await Message.create({
       sender,
-      receiver: resolvedReceiver,
+      receiver: finalReceiver,
       text,
       conversation: resolvedConversationId,
-      media: [],
+      scheduledDeletionTime: computeDeletionTime(conversation),
     });
 
-    await newMessage.save();
+    await updateConversationState(conversation, sender, text);
 
-    // Update last message in conversation
-    conversation.last_message = {
-      message: text,
-      sender,
-      timestamp: new Date(),
-    };
-
-    // Update unread messages for receiver
-    const unread = conversation.unread_messages.find(
-      (um) => um.user.toString() === resolvedReceiver.toString()
-    );
-
-    if (unread) {
-      unread.count += 1;
-    } else {
-      conversation.unread_messages.push({ user: resolvedReceiver, count: 1 });
-    }
-
-    await conversation.save();
-
-    // Populate message for response
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
       .populate("receiver", "username")
       .populate("replyTo");
 
-    // Emit socket events
-    console.log("Emitting receiveMessage to room:", resolvedConversationId);
+    if (!populatedMessage) {
+      console.error("sendTextMessage: Failed to populate message", newMessage._id);
+      socket.emit("sendMessageError", { message: "Failed to populate message" });
+      return { success: false, message: "Failed to populate message" };
+    }
+
+    // Emit Socket.IO events
+    console.log("sendTextMessage: Emitting receiveMessage to room:", resolvedConversationId);
     io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
     socket.emit("sendMessageSuccess", {
       message: populatedMessage,
@@ -294,7 +182,7 @@ export const sendTextMessage = async ({
       conversationId: resolvedConversationId,
     };
   } catch (error) {
-    console.error("Error sending text message:", error);
+    console.error("sendTextMessage: Error:", error);
     socket.emit("sendMessageError", {
       message: error.message || "Server error",
     });
@@ -305,108 +193,132 @@ export const sendTextMessage = async ({
 export const sendEmoji = async (req, res) => {
   const sender = req.user._id; // Sender from authenticated user
   const { receiver, text, htmlEmoji, emojiType, mediaUrl } = req.body;
-  let { conversationId } = req.params;
+  let conversationId = req.params.conversationId || req.body.conversationId;
+  const io = req.io; // Socket.IO instance
+  const socket = req.socket; // Socket instance (if available, else null)
 
-  // Validate required fields for custom emojis
-  if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
-    return res
-      .status(400)
-      .json({
-        message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
-      });
+  // Validate required fields
+  if (!sender || !isValidObjectId(sender)) {
+    if (socket) {
+      socket.emit("sendMessageError", { message: "Invalid sender ID" });
+    }
+    return res.status(400).json({ success: false, message: "Invalid sender ID" });
   }
 
-  // Validate emojiType
+  if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
+    if (socket) {
+      socket.emit("sendMessageError", {
+        message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
+    });
+  }
+
   if (emojiType && !["custom", "standard"].includes(emojiType)) {
-    return res.status(400).json({ message: "Invalid emojiType" });
+    if (socket) {
+      socket.emit("sendMessageError", { message: "Invalid emojiType" });
+    }
+    return res.status(400).json({ success: false, message: "Invalid emojiType" });
+  }
+
+  // Verify Socket.IO instance
+  if (!io) {
+    console.error("sendEmoji: Socket.IO instance (req.io) is undefined");
+    if (socket) {
+      socket.emit("sendMessageError", { message: "Socket.IO not initialized" });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Socket.IO not initialized",
+    });
   }
 
   try {
-    let conversation;
+    // Find or create conversation
+    const conversation = await findOrCreateConversation(
+      sender,
+      receiver,
+      conversationId
+    );
+    const resolvedConversationId = conversation._id.toString(); // Convert ObjectId to string
+    console.log("sendEmoji: Conversation ID:", resolvedConversationId);
 
-    if (!conversationId) {
-      if (!receiver) {
-        return res
-          .status(400)
-          .json({ message: "Receiver is required for new conversation" });
-      }
+    // Verify user is in conversation
+    await verifyUserInConversation(conversation, sender);
 
-      // Try to find existing one-to-one conversation
-      conversation = await Conversation.findOne({
-        participants: { $all: [sender, receiver], $size: 2 },
-        "group.is_group": false,
-      });
-
-      if (!conversation) {
-        // Create new one-to-one conversation
-        conversation = new Conversation({
-          participants: [
-            new mongoose.Types.ObjectId(sender),
-            new mongoose.Types.ObjectId(receiver),
-          ],
-          visibility: "private",
-          group: { is_group: false },
-        });
-
-        await conversation.save();
-      }
-
-      conversationId = conversation._id;
-    } else {
-      // Existing conversation
-      conversation = await Conversation.findById(conversationId);
-      if (!conversation) {
-        return res.status(404).json({ message: "Conversation not found" });
-      }
-    }
-
-    // Determine receiver if not explicitly sent
+    // Determine receiver
     const otherParticipant = conversation.participants.find(
       (id) => id.toString() !== sender.toString()
     );
     const resolvedReceiver = receiver || otherParticipant;
 
     // Create and save the message
-    const newMessage = new Message({
+    const newMessage = await Message.create({
       sender,
       receiver: resolvedReceiver,
+      conversation: resolvedConversationId,
       text: text || htmlEmoji || "", // Fallback to htmlEmoji for standard emojis
-      conversation: conversationId,
       messageType: "text", // Emojis are treated as text messages
       htmlEmoji: htmlEmoji || null,
       emojiType: emojiType || null,
       media: emojiType === "custom" ? [{ url: mediaUrl, type: "image" }] : [],
+      scheduledDeletionTime: computeDeletionTime(conversation),
     });
 
-    await newMessage.save();
-
-    // Update last message in conversation
-    conversation.last_message = {
-      message: text || htmlEmoji || "[Emoji]",
+    // Update conversation state
+    await updateConversationState(
+      conversation,
       sender,
-      timestamp: new Date(),
-    };
-
-    // Update unread messages for receiver
-    const unread = conversation.unread_messages.find(
-      (um) => um.user.toString() === resolvedReceiver.toString()
+      text || htmlEmoji || "[Emoji]"
     );
 
-    if (unread) {
-      unread.count += 1;
-    } else {
-      conversation.unread_messages.push({ user: resolvedReceiver, count: 1 });
+    // Populate message
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo");
+
+    if (!populatedMessage) {
+      console.error("sendEmoji: Failed to populate message", newMessage._id);
+      if (socket) {
+        socket.emit("sendMessageError", { message: "Failed to populate message" });
+      }
+      return res.status(500).json({
+        success: false,
+        message: "Failed to populate message",
+      });
     }
 
-    await conversation.save();
+    // Emit Socket.IO events
+    console.log("sendEmoji: Emitting receiveMessage to room:", resolvedConversationId);
+    io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
+    if (socket) {
+      socket.emit("sendMessageSuccess", {
+        message: populatedMessage,
+        conversationId: resolvedConversationId,
+      });
+    }
 
-    // Emit real-time socket event
-    req.io.to(resolvedReceiver.toString()).emit("receiveMessage", newMessage);
-
-    res.status(201).json({ message: newMessage, conversationId });
+    // Send response
+    res.status(201).json({
+      success: true,
+      message: populatedMessage,
+      conversationId: resolvedConversationId,
+    });
   } catch (error) {
-    console.error("Error sending emoji:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("sendEmoji: Error:", error);
+    if (socket) {
+      socket.emit("sendMessageError", {
+        message: error.message || "Server error",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -677,6 +589,80 @@ export const getMessages = async (req, res) => {
   } catch (error) {
     console.error("Error fetching messages:", error);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getConversationImages = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { cursor, limit = 20, direction = "older", skip } = req.query;
+
+    const parsedLimit = Math.min(Number(limit) || 20, 50); // Max 50 per page
+
+    const query = {
+      conversation: conversationId,
+      messageType: "image",
+      $or: [{ emojiType: { $exists: false } }, { emojiType: null }],
+    };
+    let sortOrder = direction === "older" ? -1 : 1;
+
+    if (cursor) {
+      const cursorDate = new Date(Number(cursor));
+      query.createdAt =
+        direction === "older" ? { $lt: cursorDate } : { $gt: cursorDate };
+    }
+
+    if (skip) {
+      // Simulate offset by fetching messages and skipping
+      const skipCount = Number(skip) || 0;
+      const messagesBeforeSkip = await Message.find(query)
+        .sort({ createdAt: sortOrder })
+        .limit(skipCount)
+        .lean();
+
+      if (messagesBeforeSkip.length === skipCount) {
+        // Use the last message's createdAt as the cursor
+        const lastMessage = messagesBeforeSkip[messagesBeforeSkip.length - 1];
+        query.createdAt =
+          direction === "older"
+            ? { $lt: new Date(lastMessage.createdAt) }
+            : { $gt: new Date(lastMessage.createdAt) };
+      } else {
+        // If skip exceeds available messages, return empty result
+        return res.status(200).json({
+          images: [],
+          nextCursor: null,
+          hasMore: false,
+        });
+      }
+    }
+
+    const messages = await Message.find(query)
+      .sort({ createdAt: sortOrder })
+      .limit(parsedLimit)
+      .lean();
+
+    const normalizedMessages =
+      direction === "older" ? messages.reverse() : messages;
+
+    res.status(200).json({
+      images: normalizedMessages.map((msg) => ({
+        _id: msg._id,
+        createdAt: msg.createdAt,
+        media: msg.media.filter((m) => m.type === "image"),
+        sender: msg.sender,
+      })),
+      nextCursor:
+        normalizedMessages.length > 0
+          ? new Date(
+              normalizedMessages[normalizedMessages.length - 1].createdAt
+            ).getTime()
+          : null,
+      hasMore: normalizedMessages.length === parsedLimit,
+    });
+  } catch (error) {
+    console.error("Error fetching conversation images:", error);
+    res.status(500).json({ message: "Failed to load images" });
   }
 };
 
