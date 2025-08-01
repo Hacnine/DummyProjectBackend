@@ -190,136 +190,171 @@ export const sendTextMessage = async ({
   }
 };
 
-export const sendEmoji = async (req, res) => {
-  const sender = req.user._id; // Sender from authenticated user
-  const { receiver, text, htmlEmoji, emojiType, mediaUrl } = req.body;
-  let conversationId = req.params.conversationId || req.body.conversationId;
-  const io = req.io; // Socket.IO instance
-  const socket = req.socket; // Socket instance (if available, else null)
-
-  // Validate required fields
+// Utility to validate emoji data
+const validateEmojiData = ({ sender, emojiType, text, htmlEmoji, mediaUrl }) => {
   if (!sender || !isValidObjectId(sender)) {
-    if (socket) {
-      socket.emit("sendMessageError", { message: "Invalid sender ID" });
-    }
-    return res.status(400).json({ success: false, message: "Invalid sender ID" });
+    return { success: false, message: "Invalid sender ID" };
   }
-
   if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
-    if (socket) {
-      socket.emit("sendMessageError", {
-        message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
-      });
-    }
-    return res.status(400).json({
-      success: false,
-      message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
-    });
+    return { success: false, message: "Text, htmlEmoji, and mediaUrl are required for custom emojis" };
   }
-
   if (emojiType && !["custom", "standard"].includes(emojiType)) {
-    if (socket) {
-      socket.emit("sendMessageError", { message: "Invalid emojiType" });
-    }
-    return res.status(400).json({ success: false, message: "Invalid emojiType" });
+    return { success: false, message: "Invalid emojiType" };
   }
+  return { success: true };
+};
 
-  // Verify Socket.IO instance
-  if (!io) {
-    console.error("sendEmoji: Socket.IO instance (req.io) is undefined");
+// Utility to emit Socket.IO events
+const emitSocketEvents = ({ io, socket, conversationId, message, result, errorMessage }) => {
+  if (errorMessage && !result.success) {
     if (socket) {
-      socket.emit("sendMessageError", { message: "Socket.IO not initialized" });
+      socket.emit("sendMessageError", { message: errorMessage });
     }
-    return res.status(500).json({
-      success: false,
-      message: "Socket.IO not initialized",
-    });
+    return;
+  }
+  io.to(conversationId).emit("receiveMessage", message);
+  if (socket) {
+    socket.emit("sendMessageSuccess", result);
+  }
+};
+
+// Shared logic for sending emojis
+const sendEmojiCore = async ({
+  sender,
+  receiver,
+  conversationId,
+  text,
+  htmlEmoji,
+  emojiType,
+  mediaUrl,
+}) => {
+  console.log("sendEmojiCore input:", { sender, receiver, conversationId, text, htmlEmoji, emojiType, mediaUrl });
+  const validation = validateEmojiData({ sender, emojiType, text, htmlEmoji, mediaUrl });
+  if (!validation.success) {
+    return validation;
   }
 
   try {
-    // Find or create conversation
-    const conversation = await findOrCreateConversation(
-      sender,
-      receiver,
-      conversationId
-    );
-    const resolvedConversationId = conversation._id.toString(); // Convert ObjectId to string
-    console.log("sendEmoji: Conversation ID:", resolvedConversationId);
+    const conversation = await findOrCreateConversation(sender, receiver, conversationId);
+    const resolvedConversationId = conversation._id.toString();
 
-    // Verify user is in conversation
     await verifyUserInConversation(conversation, sender);
 
-    // Determine receiver
-    const otherParticipant = conversation.participants.find(
+    const resolvedReceiver = receiver || conversation.participants.find(
       (id) => id.toString() !== sender.toString()
     );
-    const resolvedReceiver = receiver || otherParticipant;
 
-    // Create and save the message
     const newMessage = await Message.create({
       sender,
       receiver: resolvedReceiver,
       conversation: resolvedConversationId,
-      text: text || htmlEmoji || "", // Fallback to htmlEmoji for standard emojis
-      messageType: "text", // Emojis are treated as text messages
+      text: text || htmlEmoji || "",
+      messageType: "text",
       htmlEmoji: htmlEmoji || null,
       emojiType: emojiType || null,
       media: emojiType === "custom" ? [{ url: mediaUrl, type: "image" }] : [],
       scheduledDeletionTime: computeDeletionTime(conversation),
     });
 
-    // Update conversation state
-    await updateConversationState(
-      conversation,
-      sender,
-      text || htmlEmoji || "[Emoji]"
-    );
+    await updateConversationState(conversation, sender, text || htmlEmoji || "[Emoji]");
 
-    // Populate message
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
       .populate("receiver", "username")
       .populate("replyTo");
 
     if (!populatedMessage) {
-      console.error("sendEmoji: Failed to populate message", newMessage._id);
-      if (socket) {
-        socket.emit("sendMessageError", { message: "Failed to populate message" });
-      }
-      return res.status(500).json({
-        success: false,
-        message: "Failed to populate message",
-      });
+      return { success: false, message: "Failed to populate message" };
     }
 
-    // Emit Socket.IO events
-    console.log("sendEmoji: Emitting receiveMessage to room:", resolvedConversationId);
-    io.to(resolvedConversationId).emit("receiveMessage", populatedMessage);
-    if (socket) {
-      socket.emit("sendMessageSuccess", {
-        message: populatedMessage,
-        conversationId: resolvedConversationId,
-      });
-    }
-
-    // Send response
-    res.status(201).json({
+    return {
       success: true,
       message: populatedMessage,
       conversationId: resolvedConversationId,
-    });
+    };
   } catch (error) {
-    console.error("sendEmoji: Error:", error);
-    if (socket) {
-      socket.emit("sendMessageError", {
-        message: error.message || "Server error",
-      });
-    }
-    res.status(500).json({
-      success: false,
-      message: error.message || "Server error",
-    });
+    console.error("sendEmojiCore error:", error.message);
+    return { success: false, message: error.message || "Server error" };
   }
+};
+
+// Controller for Socket.IO
+export const handleSendEmojiSocket = async ({
+  userId: sender,
+  conversationId,
+  receiver,
+  data,
+  socket,
+  io,
+}) => {
+  if (!io) {
+    console.error("handleSendEmojiSocket: Socket.IO instance missing");
+    return { success: false, message: "Socket.IO not initialized" };
+  }
+
+  let parsedData;
+  try {
+    parsedData = JSON.parse(data);
+  } catch (error) {
+    console.error("handleSendEmojiSocket: Failed to parse data:", data);
+    return { success: false, message: "Invalid emoji data format" };
+  }
+
+  const { text, htmlEmoji, emojiType, mediaUrl } = parsedData;
+  const result = await sendEmojiCore({
+    sender,
+    receiver,
+    conversationId,
+    text,
+    htmlEmoji,
+    emojiType,
+    mediaUrl,
+  });
+
+  emitSocketEvents({
+    io,
+    socket,
+    conversationId: result.conversationId,
+    message: result.message,
+    result,
+    errorMessage: result.message,
+  });
+
+  return result;
+};
+
+// Controller for API
+export const handleSendEmojiApi = async (req, res) => {
+  const sender = req.user._id;
+  const { receiver, text, htmlEmoji, emojiType, mediaUrl } = req.body;
+  const conversationId = req.params.conversationId || req.body.conversationId;
+  const { io, socket } = req;
+
+  if (!io) {
+    console.error("handleSendEmojiApi: Socket.IO instance missing");
+    return res.status(500).json({ success: false, message: "Socket.IO not initialized" });
+  }
+
+  const result = await sendEmojiCore({
+    sender,
+    receiver,
+    conversationId,
+    text,
+    htmlEmoji,
+    emojiType,
+    mediaUrl,
+  });
+
+  emitSocketEvents({
+    io,
+    socket,
+    conversationId: result.conversationId,
+    message: result.message,
+    result,
+    errorMessage: result.message,
+  });
+
+  return res.status(result.success ? 201 : 400).json(result);
 };
 
 // Handle Read Messages Event
