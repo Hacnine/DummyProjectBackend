@@ -18,20 +18,6 @@ export const registerChatHandlers = (io, socket) => {
     io.to(conversationId).emit("typing", { userId, isTyping });
   });
 
-  socket.on(
-    "sendMessage",
-    async ({ conversationId, sender, receiver, text, media }) => {
-      await sendTextMessage({
-        io,
-        socket,
-        conversationId,
-        sender,
-        receiver,
-        text,
-        media,
-      });
-    }
-  );
 
   socket.on("sendMessage", async ({ conversationId, sender, receiver, text, media }) => {
     if (!sender) {
