@@ -22,12 +22,12 @@ import attendanceRoutes from "./routes/attendanceRoutes.js";
 import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
-import { initSocketServer } from "./sockets/index.js";
 import { startCronJobs } from "./schedulers/sessionCreationJob.js"; 
 import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletionJob.js';
 import upload from './middlewares/multerConfig.js';
 import path from 'path';
 import messageCleanupJob from './schedulers/messageCleanupJob.js';
+import { initSocketServer } from './sockets/socketindex.js';
 
 dotenv.config();
 
