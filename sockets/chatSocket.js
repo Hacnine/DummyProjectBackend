@@ -19,7 +19,8 @@ export const registerChatHandlers = (io, socket) => {
   });
 
 
-  socket.on("sendMessage", async ({ conversationId, sender, receiver, text, media }) => {
+  socket.on("sendMessage", async ({ conversationId, sender, receiver, text, clientTempId  }) => {
+    console.log(clientTempId)
     if (!sender) {
       console.error("Invalid sender for sendMessage");
       return;
@@ -31,19 +32,19 @@ export const registerChatHandlers = (io, socket) => {
       sender,
       receiver,
       text,
-      media,
+      clientTempId,
     });
   });
 
-  socket.on("sendEmoji", async ({ conversationId, sender, receiver, data }) => {
-    console.log("Received sendEmoji event:", { conversationId, sender, receiver, data });
+  socket.on("sendEmoji", async ({ conversationId, sender, receiver, data, clientTempId }) => {
+    // console.log("Received sendEmoji event:", { conversationId, sender, receiver, data });
     if (!sender || !data) {
       console.error("Invalid sendEmoji event data:", { sender, data });
-      socket.emit("sendMessageError", { message: "Invalid sender or data" });
+      socket.emit("sendMessageError", { message: "Invalid sender or data", clientTempId }); // Include clientTempId
       return;
     }
     try {
-       await handleSendEmojiSocket({
+      await handleSendEmojiSocket({
         userId: sender,
         conversationId,
         receiver,
@@ -51,15 +52,14 @@ export const registerChatHandlers = (io, socket) => {
         isSocket: true,
         socket,
         io,
+        clientTempId
       });
-      // console.log("handleSendEmojiSocket result:", result);
-      
     } catch (error) {
       console.error("sendEmoji handler error:", error.message);
-      socket.emit("sendMessageError", { message: "Server error" });
+      socket.emit("sendMessageError", { message: "Server error", clientTempId }); // Include clientTempId
     }
   });
-
+  
   socket.on("messageRead", async ({ conversationId, userId }) => {
     await markMessagesAsRead(conversationId, userId, io);
   });
