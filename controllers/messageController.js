@@ -25,7 +25,8 @@ export const sendFileMessage = async (req, res) => {
   const resolvedReceiver = req.body.receiver;
   const resolvedText = req.body.text || null;
   const clientTempId = req.body.clientTempId; // Extract clientTempId from FormData
-  let resolvedConversationId = req.params.conversationId || req.body.conversationId;
+  let resolvedConversationId =
+    req.params.conversationId || req.body.conversationId;
 
   try {
     // Validate userId
@@ -35,7 +36,9 @@ export const sendFileMessage = async (req, res) => {
 
     // Verify Socket.IO instance
     if (!req.io) {
-      console.error("sendFileMessage: Socket.IO instance (req.io) is undefined");
+      console.error(
+        "sendFileMessage: Socket.IO instance (req.io) is undefined"
+      );
       return res.status(500).json({ message: "Socket.IO not initialized" });
     }
 
@@ -92,7 +95,10 @@ export const sendFileMessage = async (req, res) => {
       .populate("replyTo");
 
     if (!populatedMessage) {
-      console.error("sendFileMessage: Failed to populate message", newMessage._id);
+      console.error(
+        "sendFileMessage: Failed to populate message",
+        newMessage._id
+      );
       return res.status(500).json({ message: "Failed to populate message" });
     }
 
@@ -103,7 +109,10 @@ export const sendFileMessage = async (req, res) => {
     };
 
     // Emit Socket.IO event
-    console.log("sendFileMessage: Emitting receiveMessage to room:", resolvedConversationId);
+    console.log(
+      "sendFileMessage: Emitting receiveMessage to room:",
+      resolvedConversationId
+    );
     req.io.to(resolvedConversationId).emit("receiveMessage", responseMessage);
 
     res.status(201).json({
@@ -128,19 +137,28 @@ export const sendTextMessage = async ({
 }) => {
   try {
     if (!text) {
-      socket.emit("sendMessageError", { message: "Message cannot be empty", clientTempId });
+      socket.emit("sendMessageError", {
+        message: "Message cannot be empty",
+        clientTempId,
+      });
       return { success: false, message: "Message cannot be empty" };
     }
     // Validate sender
     if (!sender || !isValidObjectId(sender)) {
-      socket.emit("sendMessageError", { message: "Invalid sender ID", clientTempId });
+      socket.emit("sendMessageError", {
+        message: "Invalid sender ID",
+        clientTempId,
+      });
       return { success: false, message: "Invalid sender ID" };
     }
 
     // Verify Socket.IO instance
     if (!io) {
       console.error("sendTextMessage: Socket.IO instance (io) is undefined");
-      socket.emit("sendMessageError", { message: "Socket.IO not initialized", clientTempId });
+      socket.emit("sendMessageError", {
+        message: "Socket.IO not initialized",
+        clientTempId,
+      });
       return { success: false, message: "Socket.IO not initialized" };
     }
 
@@ -176,8 +194,14 @@ export const sendTextMessage = async ({
       .populate("replyTo");
 
     if (!populatedMessage) {
-      console.error("sendTextMessage: Failed to populate message", newMessage._id);
-      socket.emit("sendMessageError", { message: "Failed to populate message", clientTempId });
+      console.error(
+        "sendTextMessage: Failed to populate message",
+        newMessage._id
+      );
+      socket.emit("sendMessageError", {
+        message: "Failed to populate message",
+        clientTempId,
+      });
       return { success: false, message: "Failed to populate message" };
     }
 
@@ -188,7 +212,10 @@ export const sendTextMessage = async ({
     };
 
     // Emit Socket.IO events
-    console.log("sendTextMessage: Emitting receiveMessage to room:", responseMessage);
+    console.log(
+      "sendTextMessage: Emitting receiveMessage to room:",
+      responseMessage
+    );
     io.to(resolvedConversationId).emit("receiveMessage", responseMessage);
     socket.emit("sendMessageSuccess", {
       message: responseMessage,
@@ -212,12 +239,21 @@ export const sendTextMessage = async ({
 
 // Utility to validate emoji data
 // Utility to validate emoji data
-const validateEmojiData = ({ sender, emojiType, text, htmlEmoji, mediaUrl }) => {
+const validateEmojiData = ({
+  sender,
+  emojiType,
+  text,
+  htmlEmoji,
+  mediaUrl,
+}) => {
   if (!sender || !isValidObjectId(sender)) {
     return { success: false, message: "Invalid sender ID" };
   }
   if (emojiType === "custom" && (!text || !htmlEmoji || !mediaUrl)) {
-    return { success: false, message: "Text, htmlEmoji, and mediaUrl are required for custom emojis" };
+    return {
+      success: false,
+      message: "Text, htmlEmoji, and mediaUrl are required for custom emojis",
+    };
   }
   if (emojiType && !["custom", "standard"].includes(emojiType)) {
     return { success: false, message: "Invalid emojiType" };
@@ -226,7 +262,15 @@ const validateEmojiData = ({ sender, emojiType, text, htmlEmoji, mediaUrl }) => 
 };
 
 // Utility to emit Socket.IO events
-const emitSocketEvents = ({ io, socket, conversationId, message, result, errorMessage, clientTempId }) => {
+const emitSocketEvents = ({
+  io,
+  socket,
+  conversationId,
+  message,
+  result,
+  errorMessage,
+  clientTempId,
+}) => {
   if (errorMessage && !result.success) {
     if (socket) {
       socket.emit("sendMessageError", { message: errorMessage, clientTempId }); // Include clientTempId in error
@@ -250,21 +294,41 @@ const sendEmojiCore = async ({
   mediaUrl,
   clientTempId, // Add clientTempId
 }) => {
-  console.log("sendEmojiCore input:", { sender, receiver, conversationId, text, htmlEmoji, emojiType, mediaUrl });
-  const validation = validateEmojiData({ sender, emojiType, text, htmlEmoji, mediaUrl });
+  console.log("sendEmojiCore input:", {
+    sender,
+    receiver,
+    conversationId,
+    text,
+    htmlEmoji,
+    emojiType,
+    mediaUrl,
+  });
+  const validation = validateEmojiData({
+    sender,
+    emojiType,
+    text,
+    htmlEmoji,
+    mediaUrl,
+  });
   if (!validation.success) {
     return { ...validation, clientTempId }; // Include clientTempId in error response
   }
 
   try {
-    const conversation = await findOrCreateConversation(sender, receiver, conversationId);
+    const conversation = await findOrCreateConversation(
+      sender,
+      receiver,
+      conversationId
+    );
     const resolvedConversationId = conversation._id.toString();
 
     await verifyUserInConversation(conversation, sender);
 
-    const resolvedReceiver = receiver || conversation.participants.find(
-      (id) => id.toString() !== sender.toString()
-    );
+    const resolvedReceiver =
+      receiver ||
+      conversation.participants.find(
+        (id) => id.toString() !== sender.toString()
+      );
 
     const newMessage = await Message.create({
       sender,
@@ -274,12 +338,19 @@ const sendEmojiCore = async ({
       messageType: "text",
       htmlEmoji: htmlEmoji || null,
       emojiType: emojiType || null,
-      media: emojiType === "custom" ? [{ url: mediaUrl, type: "image", filename: text || "emoji" }] : [],
+      media:
+        emojiType === "custom"
+          ? [{ url: mediaUrl, type: "image", filename: text || "emoji" }]
+          : [],
       status: "sent", // Ensure status is set
       scheduledDeletionTime: computeDeletionTime(conversation),
     });
 
-    await updateConversationState(conversation, sender, text || htmlEmoji || "[Emoji]");
+    await updateConversationState(
+      conversation,
+      sender,
+      text || htmlEmoji || "[Emoji]"
+    );
 
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
@@ -287,7 +358,11 @@ const sendEmojiCore = async ({
       .populate("replyTo");
 
     if (!populatedMessage) {
-      return { success: false, message: "Failed to populate message", clientTempId };
+      return {
+        success: false,
+        message: "Failed to populate message",
+        clientTempId,
+      };
     }
 
     // Add clientTempId to the response object (not stored in DB)
@@ -304,7 +379,11 @@ const sendEmojiCore = async ({
     };
   } catch (error) {
     console.error("sendEmojiCore error:", error.message);
-    return { success: false, message: error.message || "Server error", clientTempId };
+    return {
+      success: false,
+      message: error.message || "Server error",
+      clientTempId,
+    };
   }
 };
 
@@ -320,7 +399,11 @@ export const handleSendEmojiSocket = async ({
 }) => {
   if (!io) {
     console.error("handleSendEmojiSocket: Socket.IO instance missing");
-    return { success: false, message: "Socket.IO not initialized", clientTempId };
+    return {
+      success: false,
+      message: "Socket.IO not initialized",
+      clientTempId,
+    };
   }
 
   let parsedData;
@@ -328,7 +411,11 @@ export const handleSendEmojiSocket = async ({
     parsedData = JSON.parse(data);
   } catch (error) {
     console.error("handleSendEmojiSocket: Failed to parse data:", data);
-    return { success: false, message: "Invalid emoji data format", clientTempId };
+    return {
+      success: false,
+      message: "Invalid emoji data format",
+      clientTempId,
+    };
   }
 
   const { text, htmlEmoji, emojiType, mediaUrl } = parsedData;
@@ -363,7 +450,9 @@ export const handleSendEmojiApi = async (req, res) => {
 
   if (!io) {
     console.error("handleSendEmojiApi: Socket.IO instance missing");
-    return res.status(500).json({ success: false, message: "Socket.IO not initialized" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Socket.IO not initialized" });
   }
 
   const result = await sendEmojiCore({
@@ -394,12 +483,18 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
     // Validate inputs
     if (!conversationId || !isValidObjectId(conversationId)) {
       console.error("markMessagesAsRead: Invalid conversation ID");
-      if (io) io.to(conversationId).emit("messageReadError", { message: "Invalid conversation ID" });
+      if (io)
+        io.to(conversationId).emit("messageReadError", {
+          message: "Invalid conversation ID",
+        });
       return;
     }
     if (!userId || !isValidObjectId(userId)) {
       console.error("markMessagesAsRead: Invalid user ID");
-      if (io) io.to(conversationId).emit("messageReadError", { message: "Invalid user ID" });
+      if (io)
+        io.to(conversationId).emit("messageReadError", {
+          message: "Invalid user ID",
+        });
       return;
     }
     if (!io) {
@@ -410,7 +505,9 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       console.error("markMessagesAsRead: Conversation not found");
-      io.to(conversationId).emit("messageReadError", { message: "Conversation not found" });
+      io.to(conversationId).emit("messageReadError", {
+        message: "Conversation not found",
+      });
       return;
     }
 
@@ -434,34 +531,36 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
         "readBy.user": { $ne: userId }, // Not already read by user
         deletedBy: { $nin: [userId] }, // Not deleted by user
         $or: [
-          { text: { $exists: true, $ne: '' } },
+          { text: { $exists: true, $ne: "" } },
           { media: { $exists: true, $ne: [] } },
           { voice: { $exists: true } },
           { call: { $exists: true } },
-          { img: { $exists: true } }
-        ]
+          { img: { $exists: true } },
+        ],
       },
       {
         $addToSet: { readBy: { user: userId, readAt: new Date() } },
-        $set: { status: "delivered" }
+        $set: { status: "delivered" },
       },
       { new: true }
     );
 
     // Get IDs of updated messages
-    const messageIds = (await Message.find({
-      conversation: conversationId,
-      receiver: userId,
-      "readBy.user": userId,
-      deletedBy: { $nin: [userId] }, // Not deleted by user
-      $or: [
-        { text: { $exists: true, $ne: '' } },
-        { media: { $exists: true, $ne: [] } },
-        { voice: { $exists: true } },
-        { call: { $exists: true } },
-        { img: { $exists: true } }
-      ]
-    }).select("_id")).map((msg) => msg._id.toString());
+    const messageIds = (
+      await Message.find({
+        conversation: conversationId,
+        receiver: userId,
+        "readBy.user": userId,
+        deletedBy: { $nin: [userId] }, // Not deleted by user
+        $or: [
+          { text: { $exists: true, $ne: "" } },
+          { media: { $exists: true, $ne: [] } },
+          { voice: { $exists: true } },
+          { call: { $exists: true } },
+          { img: { $exists: true } },
+        ],
+      }).select("_id")
+    ).map((msg) => msg._id.toString());
 
     // Log for debugging
     // console.log(`markMessagesAsRead: Emitting messagesRead for conversation ${conversationId}, user ${userId}, messageIds:`, messageIds);
@@ -474,58 +573,207 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
         messageIds,
       });
     } else {
-      console.log(`markMessagesAsRead: No valid messages to mark as read for conversation ${conversationId}, user ${userId}`);
+      console.log(
+        // `markMessagesAsRead: No valid messages to mark as read for conversation ${conversationId}, user ${userId}`
+      );
     }
   } catch (error) {
     console.error("Error marking messages as read:", error);
-    if (io) io.to(conversationId).emit("messageReadError", { message: error.message || "Server error" });
+    if (io)
+      io.to(conversationId).emit("messageReadError", {
+        message: error.message || "Server error",
+      });
+  }
+};
+
+// Shared logic for editing messages
+const editMessageCore = async ({
+  messageId,
+  sender,
+  text,
+  htmlEmoji,
+  emojiType,
+  clientTempId,
+}) => {
+  try {
+    if (!isValidObjectId(messageId)) {
+      return { success: false, message: "Invalid message ID", clientTempId };
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return { success: false, message: "Message not found", clientTempId };
+    }
+
+    // Check if user is the sender
+    if (message.sender.toString() !== sender.toString()) {
+      return {
+        success: false,
+        message: "Unauthorized to edit this message",
+        clientTempId,
+      };
+    }
+
+    // Only text messages can be edited
+    if (message.messageType !== "text") {
+      return {
+        success: false,
+        message: "Only text messages can be edited",
+        clientTempId,
+      };
+    }
+
+    // Validate emoji data if provided
+    if (emojiType) {
+      const validation = validateEmojiData({
+        sender,
+        emojiType,
+        text,
+        htmlEmoji,
+        mediaUrl: message.media[0]?.url,
+      });
+      if (!validation.success) {
+        return { success: false, message: validation.message, clientTempId };
+      }
+    }
+
+    // Store current state in editHistory
+    if (message.text || message.htmlEmoji) {
+      message.editHistory.push({
+        text: message.text,
+        htmlEmoji: message.htmlEmoji,
+        emojiType: message.emojiType,
+        editedAt: new Date(),
+      });
+    }
+
+    // Update message fields
+    if (text !== undefined) message.text = text;
+    if (htmlEmoji !== undefined) message.htmlEmoji = htmlEmoji || null;
+    if (emojiType !== undefined) message.emojiType = emojiType || null;
+    message.edited = true;
+
+    await message.save();
+
+    // Populate message
+    const populatedMessage = await Message.findById(messageId)
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo");
+
+    if (!populatedMessage) {
+      return {
+        success: false,
+        message: "Failed to populate message",
+        clientTempId,
+      };
+    }
+
+    // Add clientTempId to response
+    const responseMessage = {
+      ...populatedMessage.toObject(),
+      clientTempId,
+    };
+
+    return {
+      success: true,
+      message: responseMessage,
+      conversationId: message.conversation.toString(),
+      clientTempId,
+    };
+  } catch (error) {
+    console.error("editMessageCore: Error:", error);
+    return {
+      success: false,
+      message: error.message || "Server error",
+      clientTempId,
+    };
   }
 };
 
 // Edit a message
 export const editMessage = async (req, res) => {
   const { messageId } = req.params;
-  const { text } = req.body;
-  const userId = req.user._id;
+  const { text, htmlEmoji, emojiType, clientTempId } = req.body;
+  const sender = req.user._id;
 
-  try {
-    if (!isValidObjectId(messageId)) {
-      return res.status(400).json({ message: "Invalid message ID" });
-    }
-
-    const message = await Message.findById(messageId);
-    if (!message) {
-      return res.status(404).json({ message: "Message not found" });
-    }
-
-    // Check if user is the sender
-    if (message.sender.toString() !== userId.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to edit this message" });
-    }
-
-    // Only text messages can be edited
-    if (message.messageType !== "text") {
-      return res
-        .status(400)
-        .json({ message: "Only text messages can be edited" });
-    }
-
-    // Update message
-    message.text = text;
-    message.edited = true;
-    message.editHistory.push({ text: message.text, editedAt: new Date() });
-    await message.save();
-
-    // Emit edited message to conversation room
-    req.io.to(message.conversation.toString()).emit("messageEdited", message);
-
-    res.status(200).json(message);
-  } catch (error) {
-    console.error("Error editing message:", error);
-    res.status(500).json({ message: "Server error" });
+  // Verify Socket.IO instance
+  if (!req.io) {
+    console.error("editMessage: Socket.IO instance (req.io) is undefined");
+    return res
+      .status(500)
+      .json({ message: "Socket.IO not initialized", clientTempId });
   }
+
+  const result = await editMessageCore({
+    messageId,
+    sender,
+    text,
+    htmlEmoji,
+    emojiType,
+    clientTempId,
+  });
+
+  if (!result.success) {
+    return res.status(400).json({ message: result.message, clientTempId });
+  }
+
+  req.io.to(result.conversationId).emit("messageEdited", result.message);
+
+  res.status(200).json({
+    message: result.message,
+    clientTempId,
+  });
+};
+
+// Handle edit message via Socket.IO
+export const handleEditMessageSocket = async ({
+  io,
+  socket,
+  messageId,
+  text,
+  htmlEmoji,
+  emojiType,
+  clientTempId,
+}) => {
+  if (!io) {
+    console.error(
+      "handleEditMessageSocket: Socket.IO instance (io) is undefined"
+    );
+    socket.emit("editMessageError", {
+      message: "Socket.IO not initialized",
+      clientTempId,
+    });
+    return {
+      success: false,
+      message: "Socket.IO not initialized",
+      clientTempId,
+    };
+  }
+  const sender = socket.user.id;
+  console.log('sender', sender)
+  const result = await editMessageCore({
+    messageId,
+    sender,
+    text,
+    htmlEmoji,
+    emojiType,
+    clientTempId,
+  });
+
+  if (!result.success) {
+    socket.emit("editMessageError", { message: result.message, clientTempId });
+    return result;
+  }
+
+  io.to(result.conversationId).emit("messageEdited", result.message);
+  socket.emit("editMessageSuccess", {
+    message: result.message,
+    conversationId: result.conversationId,
+    clientTempId,
+  });
+
+  return result;
 };
 
 // Delete a message (soft delete)
@@ -605,60 +853,106 @@ export const deleteMessage = async ({
   }
 };
 
-// Reply to a message
-export const replyMessage = async (req, res) => {
-  const { conversationId, messageId } = req.params;
-  const { text, messageType = "reply" } = req.body;
-  const sender = req.user._id;
-  let receiver = req.body.receiver;
-
+// Shared logic for sending reply messages
+const sendReplyCore = async ({
+  sender,
+  conversationId,
+  messageId,
+  text,
+  messageType = "reply",
+  htmlEmoji,
+  emojiType,
+  media = [],
+  clientTempId,
+}) => {
   try {
-    // Validate conversation and message
     if (!isValidObjectId(conversationId) || !isValidObjectId(messageId)) {
-      return res
-        .status(400)
-        .json({ message: "Invalid conversation or message ID" });
+      return {
+        success: false,
+        message: "Invalid conversation or message ID",
+        clientTempId,
+      };
+    }
+
+    if (!sender || !isValidObjectId(sender)) {
+      return { success: false, message: "Invalid sender ID", clientTempId };
     }
 
     if (!(await isUserInConversation(conversationId, sender))) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to reply in this conversation" });
+      return {
+        success: false,
+        message: "Unauthorized to reply in this conversation",
+        clientTempId,
+      };
     }
 
     const originalMessage = await Message.findById(messageId);
     if (!originalMessage) {
-      return res.status(404).json({ message: "Original message not found" });
+      return {
+        success: false,
+        message: "Original message not found",
+        clientTempId,
+      };
     }
 
-    // Create reply message
-    const newMessage = new Message({
+    let finalMessageType = messageType;
+    let mediaFiles = media;
+
+    if (media?.length > 0) {
+      mediaFiles = media.map((file) => ({
+        url: file.url || file.filename,
+        type: mapMimeTypeToMediaType(file.mimetype),
+        filename: file.originalname || file.filename,
+        size: file.size,
+      }));
+      const uniqueTypes = [...new Set(mediaFiles.map((f) => f.type))];
+      finalMessageType = uniqueTypes.length === 1 ? uniqueTypes[0] : "mixed";
+    } else if (htmlEmoji && emojiType) {
+      finalMessageType = "text";
+    }
+
+    if (emojiType) {
+      const validation = validateEmojiData({
+        sender,
+        emojiType,
+        text,
+        htmlEmoji,
+        mediaUrl: mediaFiles[0]?.url,
+      });
+      if (!validation.success) {
+        return { success: false, message: validation.message, clientTempId };
+      }
+    }
+
+    const conversation = await Conversation.findById(conversationId);
+
+    const newMessage = await Message.create({
       conversation: conversationId,
       sender,
-      receiver: receiver ? (isValidObjectId(receiver) ? receiver : null) : null,
-      text,
-      messageType,
+      text: typeof text === "string" && text.trim() !== "" ? text : htmlEmoji || null,
+      messageType: finalMessageType,
+      media: mediaFiles,
+      htmlEmoji: htmlEmoji || null,
+      emojiType: emojiType || null,
       replyTo: messageId,
+      status: "sent",
+      scheduledDeletionTime: computeDeletionTime(conversation),
     });
 
-    await newMessage.save();
-
-    // Update conversation
-    const conversation = await Conversation.findById(conversationId);
     if (conversation) {
       conversation.last_message = {
-        message: text,
+        message: typeof text === "string" && text.trim() !== "" ? text : htmlEmoji || "[Media]",
         sender,
         timestamp: new Date(),
       };
 
       conversation.participants.forEach((participant) => {
         if (participant.toString() !== sender.toString()) {
-          const unreadMessage = conversation.unread_messages.find(
-            (um) => um.user.toString() === participant.toString()
+          const unread = conversation.unread_messages.find(
+            (u) => u.user.toString() === participant.toString()
           );
-          if (unreadMessage) {
-            unreadMessage.count += 1;
+          if (unread) {
+            unread.count += 1;
           } else {
             conversation.unread_messages.push({ user: participant, count: 1 });
           }
@@ -668,19 +962,160 @@ export const replyMessage = async (req, res) => {
       await conversation.save();
     }
 
-    // Populate and emit
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
-      .populate("receiver", "username")
-      .populate("replyTo");
+      .populate("replyTo", "_id text messageType media")
+      .lean();
 
-    req.io.to(conversationId).emit("receiveMessage", populatedMessage);
+    if (populatedMessage?.replyTo) {
+      populatedMessage.replyTo = {
+        _id: populatedMessage.replyTo._id,
+        text: populatedMessage.replyTo.text,
+        messageType: populatedMessage.replyTo.messageType,
+        media: populatedMessage.replyTo.media,
+      };
+    }
 
-    res.status(201).json(populatedMessage);
+    if (!populatedMessage) {
+      console.error("sendReplyCore: Failed to populate message", newMessage._id);
+      return {
+        success: false,
+        message: "Failed to populate message",
+        clientTempId,
+      };
+    }
+
+    const responseMessage = {
+      ...populatedMessage,
+      clientTempId,
+    };
+
+    return {
+      success: true,
+      message: responseMessage,
+      conversationId,
+      clientTempId,
+    };
   } catch (error) {
-    console.error("Error replying to message:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("sendReplyCore: Error:", error);
+    return {
+      success: false,
+      message: error.message || "Server error",
+      clientTempId,
+    };
   }
+};
+
+// Reply to a message
+export const replyMessage = async (req, res) => { 
+  const { conversationId, messageId } = req.params;
+  const {
+    text,
+    messageType = "reply",
+    htmlEmoji,
+    emojiType,
+    clientTempId,
+  } = req.body;
+  const sender = req.user._id;
+  console.log("text", clientTempId);
+  // Verify Socket.IO instance
+  if (!req.io) {
+    console.error("replyMessage: Socket.IO instance (req.io) is undefined");
+    return res
+      .status(500)
+      .json({ message: "Socket.IO not initialized", clientTempId });
+  }
+
+  // Handle media files if present
+  let mediaFiles = [];
+  if (req?.files?.length > 0) {
+    mediaFiles = req.files.map((file) => ({
+      url: file.filename,
+      type: mapMimeTypeToMediaType(file.mimetype),
+      filename: file.originalname,
+      size: file.size,
+    }));
+  }
+
+  const result = await sendReplyCore({
+    sender,
+    conversationId,
+    messageId,
+    text,
+    messageType,
+    htmlEmoji,
+    emojiType,
+    media: mediaFiles,
+    clientTempId,
+  });
+
+  if (!result.success) {
+    return res.status(400).json({ message: result.message, clientTempId });
+  }
+
+  req.io.to(conversationId).emit("receiveMessage", result.message);
+
+  res.status(201).json({
+    message: result.message,
+    conversationId,
+    clientTempId,
+  });
+};
+
+// Handle reply message via Socket.IO
+export const handleSendReplySocket = async ({
+  io,
+  socket,
+  conversationId,
+  messageId,
+  text,
+  messageType = "reply",
+  htmlEmoji,
+  emojiType,
+  media,
+  clientTempId,
+}) => {
+  if (!io) {
+    console.error(
+      "handleSendReplySocket: Socket.IO instance (io) is undefined"
+    );
+    socket.emit("sendMessageError", {
+      message: "Socket.IO not initialized",
+      clientTempId,
+    });
+    return {
+      success: false,
+      message: "Socket.IO not initialized",
+      clientTempId,
+    };
+  }
+
+  const sender = socket.user.id;
+  const result = await sendReplyCore({
+    sender,
+    conversationId,
+    messageId,
+    text,
+    messageType,
+    htmlEmoji,
+    emojiType,
+    media,
+    clientTempId,
+  });
+
+  if (!result.success) {
+    socket.emit("sendMessageError", { message: result.message, clientTempId });
+    return result;
+  }
+
+  io.to(conversationId).emit("receiveMessage", result.message);
+  socket.emit("sendMessageSuccess", {
+    message: result.message,
+    conversationId,
+    clientTempId,
+  });
+
+  return result;
 };
 
 // Get messages with pagination
@@ -707,7 +1142,7 @@ export const getMessages = async (req, res) => {
     })
       .populate("sender", "username")
       .populate("receiver", "username")
-      .populate("replyTo")
+      .populate("replyTo", "_id text messageType media")
       .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
@@ -801,45 +1236,3 @@ export const getConversationImages = async (req, res) => {
     res.status(500).json({ message: "Failed to load images" });
   }
 };
-
-// Mark messages as read
-// const markMessagesAsRead = async (req, res) => {
-//   const { conversationId } = req.params;
-//   const userId = req.user._id;
-
-//   try {
-//     if (!isValidObjectId(conversationId)) {
-//       return res.status(400).json({ message: "Invalid conversation ID" });
-//     }
-
-//     if (!(await isUserInConversation(conversationId, userId))) {
-//       return res.status(403).json({ message: "Unauthorized to mark messages as read" });
-//     }
-
-//     // Mark messages as read
-//     await Message.updateMany(
-//       { conversation: conversationId, readBy: { $ne: { user: userId } } },
-//       { $push: { readBy: { user: userId, readAt: new Date() } } }
-//     );
-
-//     // Reset unread count in conversation
-//     const conversation = await Conversation.findById(conversationId);
-//     if (conversation) {
-//       const unreadMessage = conversation.unread_messages.find(
-//         (um) => um.user.toString() === userId.toString()
-//       );
-//       if (unreadMessage) {
-//         unreadMessage.count = 0;
-//         await conversation.save();
-//       }
-//     }
-
-//     // Emit read event
-//     req.io.to(conversationId).emit("messagesRead", { conversationId, userId });
-
-//     res.status(200).json({ message: "Messages marked as read" });
-//   } catch (error) {
-//     console.error("Error marking messages as read:", error);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };

@@ -16,7 +16,7 @@ export const registerConversationActiveUsersHandlers = (io, socket) => {
   const userId = socket.user?.id; // Assuming socket.user.id is set during authentication
 
   // Handle joinRoom
-  socket.on("joinRoom", (conversationId, userId) => {
+  socket.on("joinGroupChat", (conversationId, userId) => {
     // Validate userId matches authenticated user
     console.log(conversationId)
     if (userId !== socket.user?.id) {
@@ -34,7 +34,7 @@ export const registerConversationActiveUsersHandlers = (io, socket) => {
         activeUsersByRoom.set(conversationId, new Map());
       }
       activeUsersByRoom.get(conversationId).set(userId, userData);
-      console.log(`User ${userId} joined room ${conversationId}`);
+      // console.log(`User ${userId} joined room ${conversationId}`);
       sendActiveUsersList(io, conversationId);
     } else {
       console.warn(`No userData found for user ${userId} in joinRoom`);
@@ -42,7 +42,7 @@ export const registerConversationActiveUsersHandlers = (io, socket) => {
   });
 
   // Handle leaveRoom
-  socket.on("leaveRoom", (conversationId, userId) => {
+  socket.on("leaveGroupChat", (conversationId, userId) => {
     // Validate userId
     if (userId !== socket.user?.id) {
       console.warn(`Unauthorized leave attempt by socket ${socket.id} for user ${userId}`);
@@ -58,7 +58,7 @@ export const registerConversationActiveUsersHandlers = (io, socket) => {
       if (activeUsersByRoom.get(conversationId).size === 0) {
         activeUsersByRoom.delete(conversationId); // Clean up empty rooms
       }
-      console.log(`User ${userId} left room ${conversationId}`);
+      // console.log(`User ${userId} left room ${conversationId}`);
       sendActiveUsersList(io, conversationId);
     }
   });
