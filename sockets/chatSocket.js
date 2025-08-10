@@ -96,18 +96,9 @@ export const registerChatHandlers = (io, socket) => {
       try {
         // Basic validation
         if (!conversationId || !messageId || !clientTempId) {
-          socket.emit("sendMessageError", {
+          socket.emit("replyMessageError", {
             message:
               "Missing required fields: conversationId, messageId, or clientTempId",
-            clientTempId,
-          });
-          return;
-        }
-
-        // Validate media format if provided
-        if (media && !Array.isArray(media)) {
-          socket.emit("sendMessageError", {
-            message: "Media must be an array",
             clientTempId,
           });
           return;
@@ -128,11 +119,19 @@ export const registerChatHandlers = (io, socket) => {
 
         // Optionally handle result if needed (e.g., logging)
         if (!result.success) {
+          socket.emit("replyMessageError");
           console.error("replyMessage: Failed to send reply:", result.message);
         }
+
+        io.to(conversationId).emit("replyReceiveMessage", result.message);
+        socket.emit("replyMessageSuccess", {
+          message: result.message,
+          conversationId,
+          clientTempId,
+        });
       } catch (error) {
         console.error("replyMessage: Error in socket handler:", error);
-        socket.emit("sendMessageError", {
+        socket.emit("replyMessageError", {
           message: error.message || "Server error",
           clientTempId,
         });
@@ -140,16 +139,9 @@ export const registerChatHandlers = (io, socket) => {
     }
   );
 
-
   socket.on(
     "editMessage",
-    async ({
-      messageId,
-      text,
-      htmlEmoji,
-      emojiType,
-      clientTempId,
-    }) => {
+    async ({ messageId, text, htmlEmoji, emojiType, clientTempId }) => {
       try {
         // Basic validation
         if (!messageId || !clientTempId) {

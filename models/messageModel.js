@@ -27,7 +27,7 @@ const messageSchema = new Schema(
 
     messageType: {
       type: String,
-      enum: ["text", "image", "video", "audio", "file", "system", "reply"],
+      enum: ["text", "image", "video", "audio", "file", "system", "reply", "mixed"],
       default: "text",
     },
 
