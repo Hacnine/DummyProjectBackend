@@ -22,7 +22,7 @@ router.post("/send-emoji/:conversationId", isLogin, handleSendEmojiApi);
 
 router.put("/edit-message/:messageId", isLogin, editMessage); // Edit a text message
 router.delete("/delete/:messageId", isLogin, deleteMessage); // Soft-delete a message
-router.post("/:conversationId/reply/:messageId", isLogin, replyMessage);
+router.post("/:conversationId/reply/:messageId", isLogin, rawUpload.any(), replyMessage);
 
 router.get("/get-messages/:conversationId/", isLogin, getMessages); // Get image messages with pagination
 router.get("/:conversationId/images", getConversationImages);

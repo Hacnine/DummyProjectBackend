@@ -3,18 +3,14 @@ import {
   markMessagesAsRead,
   sendTextMessage,
   handleSendEmojiSocket,
-  handleSendReplySocket,
-  handleEditMessageSocket,
+  sendReplyCore,
+  editMessageCore,
 } from "../controllers/messageController.js";
 
 export const registerChatHandlers = (io, socket) => {
   socket.on("joinRoom", (conversationId) => {
     socket.join(conversationId);
   });
-
-  // socket.on("leaveRoom", (conversationId) => {
-  //   socket.leave(conversationId);
-  // });
 
   socket.on("typing", ({ conversationId, userId, isTyping }) => {
     io.to(conversationId).emit("typing", { userId, isTyping });
@@ -103,17 +99,15 @@ export const registerChatHandlers = (io, socket) => {
           });
           return;
         }
-
-        const result = await handleSendReplySocket({
-          io,
-          socket,
+        const sender = socket.user.id;
+        const result = await sendReplyCore({
+          sender,
           conversationId,
           messageId,
           text,
           messageType,
           htmlEmoji,
           emojiType,
-          media,
           clientTempId,
         });
 
@@ -152,10 +146,10 @@ export const registerChatHandlers = (io, socket) => {
           return;
         }
 
-        const result = await handleEditMessageSocket({
-          io,
-          socket,
+        const sender = socket.user.id;
+        const result = await editMessageCore({
           messageId,
+          sender,
           text,
           htmlEmoji,
           emojiType,

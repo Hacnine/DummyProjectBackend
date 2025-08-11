@@ -48,7 +48,7 @@ export const sendFileMessage = async (req, res) => {
       resolvedConversationId
     );
     resolvedConversationId = conversation._id.toString();
-    console.log("sendFileMessage: Conversation ID:", resolvedConversationId);
+    // console.log("sendFileMessage: Conversation ID:", resolvedConversationId);
 
     await verifyUserInConversation(conversation, userId);
 
@@ -109,10 +109,10 @@ export const sendFileMessage = async (req, res) => {
     };
 
     // Emit Socket.IO event
-    console.log(
-      "sendFileMessage: Emitting receiveMessage to room:",
-      resolvedConversationId
-    );
+    // console.log(
+    //   "sendFileMessage: Emitting receiveMessage to room:",
+    //   resolvedConversationId
+    // );
     req.io.to(resolvedConversationId).emit("receiveMessage", responseMessage);
 
     res.status(201).json({
@@ -212,10 +212,10 @@ export const sendTextMessage = async ({
     };
 
     // Emit Socket.IO events
-    console.log(
-      "sendTextMessage: Emitting receiveMessage to room:",
-      responseMessage
-    );
+    // console.log(
+    //   "sendTextMessage: Emitting receiveMessage to room:",
+    //   responseMessage
+    // );
     io.to(resolvedConversationId).emit("receiveMessage", responseMessage);
     socket.emit("sendMessageSuccess", {
       message: responseMessage,
@@ -442,6 +442,7 @@ export const handleSendEmojiSocket = async ({
 
   return result;
 };
+
 export const handleSendEmojiApi = async (req, res) => {
   const sender = req.user._id;
   const { receiver, text, htmlEmoji, emojiType, mediaUrl } = req.body;
@@ -587,7 +588,7 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
 };
 
 // Shared logic for editing messages
-const editMessageCore = async ({
+export const editMessageCore = async ({
   messageId,
   sender,
   text,
@@ -726,56 +727,6 @@ export const editMessage = async (req, res) => {
   });
 };
 
-// Handle edit message via Socket.IO
-export const handleEditMessageSocket = async ({
-  io,
-  socket,
-  messageId,
-  text,
-  htmlEmoji,
-  emojiType,
-  clientTempId,
-}) => {
-  if (!io) {
-    console.error(
-      "handleEditMessageSocket: Socket.IO instance (io) is undefined"
-    );
-    socket.emit("editMessageError", {
-      message: "Socket.IO not initialized",
-      clientTempId,
-    });
-    return {
-      success: false,
-      message: "Socket.IO not initialized",
-      clientTempId,
-    };
-  }
-  const sender = socket.user.id;
-  console.log('sender', sender)
-  const result = await editMessageCore({
-    messageId,
-    sender,
-    text,
-    htmlEmoji,
-    emojiType,
-    clientTempId,
-  });
-
-  if (!result.success) {
-    socket.emit("editMessageError", { message: result.message, clientTempId });
-    return result;
-  }
-
-  io.to(result.conversationId).emit("messageEdited", result.message);
-  socket.emit("editMessageSuccess", {
-    message: result.message,
-    conversationId: result.conversationId,
-    clientTempId,
-  });
-
-  return result;
-};
-
 // Delete a message (soft delete)
 export const deleteMessage = async ({
   io,
@@ -854,7 +805,7 @@ export const deleteMessage = async ({
 };
 
 // Shared logic for sending reply messages
-const sendReplyCore = async ({
+export const  sendReplyCore = async ({
   sender,
   conversationId,
   messageId,
@@ -899,15 +850,12 @@ const sendReplyCore = async ({
     let mediaFiles = media;
 
     if (media?.length > 0) {
-      mediaFiles = media.map((file) => ({
-        url: file.url || file.filename,
-        type: mapMimeTypeToMediaType(file.mimetype),
-        filename: file.originalname || file.filename,
-        size: file.size,
-      }));
+      // Use the provided media files as-is, assuming they are already formatted correctly
       const uniqueTypes = [...new Set(mediaFiles.map((f) => f.type))];
       finalMessageType = uniqueTypes.length === 1 ? uniqueTypes[0] : "mixed";
     } else if (htmlEmoji && emojiType) {
+      finalMessageType = "text";
+    } else if (text) {
       finalMessageType = "text";
     }
 
@@ -929,6 +877,9 @@ const sendReplyCore = async ({
     const newMessage = await Message.create({
       conversation: conversationId,
       sender,
+      receiver: conversation.participants.find(
+        (id) => id.toString() !== sender.toString()
+      ), // Set receiver explicitly
       text: typeof text === "string" && text.trim() !== "" ? text : htmlEmoji || null,
       messageType: finalMessageType,
       media: mediaFiles,
@@ -964,6 +915,7 @@ const sendReplyCore = async ({
 
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
+      .populate("receiver", "username")
       .populate("replyTo", "_id text messageType media")
       .lean();
 
@@ -1007,7 +959,7 @@ const sendReplyCore = async ({
 };
 
 // Reply to a message
-export const replyMessage = async (req, res) => { 
+export const replyMessage = async (req, res) => {
   const { conversationId, messageId } = req.params;
   const {
     text,
@@ -1017,7 +969,7 @@ export const replyMessage = async (req, res) => {
     clientTempId,
   } = req.body;
   const sender = req.user._id;
-  console.log("text", clientTempId);
+
   // Verify Socket.IO instance
   if (!req.io) {
     console.error("replyMessage: Socket.IO instance (req.io) is undefined");
@@ -1030,19 +982,32 @@ export const replyMessage = async (req, res) => {
   let mediaFiles = [];
   if (req?.files?.length > 0) {
     mediaFiles = req.files.map((file) => ({
-      url: file.filename,
+      url: file.filename, // Use server-side filename, matching sendFileMessage
       type: mapMimeTypeToMediaType(file.mimetype),
       filename: file.originalname,
       size: file.size,
     }));
   }
 
+  // Determine messageType dynamically
+  let finalMessageType = messageType;
+  if (mediaFiles.length > 0) {
+    const uniqueTypes = [...new Set(mediaFiles.map((f) => f.type))];
+    finalMessageType = uniqueTypes.length === 1 ? uniqueTypes[0] : "mixed";
+  } else if (htmlEmoji && emojiType) {
+    finalMessageType = "text";
+  } else if (text) {
+    finalMessageType = "text";
+  }
+
+  console.log("replyMessage: mediaFiles:", mediaFiles);
+
   const result = await sendReplyCore({
     sender,
     conversationId,
     messageId,
     text,
-    messageType,
+    messageType: finalMessageType,
     htmlEmoji,
     emojiType,
     media: mediaFiles,
@@ -1053,69 +1018,30 @@ export const replyMessage = async (req, res) => {
     return res.status(400).json({ message: result.message, clientTempId });
   }
 
-  req.io.to(conversationId).emit("receiveMessage", result.message);
+  // Populate the message for response
+  const populatedMessage = await Message.findById(result.message._id)
+    .populate("sender", "username")
+    .populate("receiver", "username")
+    .populate("replyTo", "_id text messageType media");
+
+  if (!populatedMessage) {
+    console.error("replyMessage: Failed to populate message", result.message._id);
+    return res.status(500).json({ message: "Failed to populate message" });
+  }
+
+  // Add clientTempId to the response object
+  const responseMessage = {
+    ...populatedMessage.toObject(),
+    clientTempId,
+  };
+
+  req.io.to(conversationId).emit("receiveMessage", responseMessage);
 
   res.status(201).json({
-    message: result.message,
+    message: responseMessage,
     conversationId,
     clientTempId,
   });
-};
-
-// Handle reply message via Socket.IO
-export const handleSendReplySocket = async ({
-  io,
-  socket,
-  conversationId,
-  messageId,
-  text,
-  messageType = "reply",
-  htmlEmoji,
-  emojiType,
-  media,
-  clientTempId,
-}) => {
-  if (!io) {
-    console.error(
-      "handleSendReplySocket: Socket.IO instance (io) is undefined"
-    );
-    socket.emit("sendMessageError", {
-      message: "Socket.IO not initialized",
-      clientTempId,
-    });
-    return {
-      success: false,
-      message: "Socket.IO not initialized",
-      clientTempId,
-    };
-  }
-
-  const sender = socket.user.id;
-  const result = await sendReplyCore({
-    sender,
-    conversationId,
-    messageId,
-    text,
-    messageType,
-    htmlEmoji,
-    emojiType,
-    media,
-    clientTempId,
-  });
-
-  if (!result.success) {
-    socket.emit("sendMessageError", { message: result.message, clientTempId });
-    return result;
-  }
-
-  io.to(conversationId).emit("receiveMessage", result.message);
-  socket.emit("sendMessageSuccess", {
-    message: result.message,
-    conversationId,
-    clientTempId,
-  });
-
-  return result;
 };
 
 // Get messages with pagination
