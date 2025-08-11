@@ -133,42 +133,52 @@ export const registerChatHandlers = (io, socket) => {
     }
   );
 
-  socket.on(
-    "editMessage",
-    async ({ messageId, text, htmlEmoji, emojiType, clientTempId }) => {
-      try {
-        // Basic validation
-        if (!messageId || !clientTempId) {
-          socket.emit("editMessageError", {
-            message: "Missing required fields: messageId, or clientTempId",
-            clientTempId,
-          });
-          return;
-        }
-
-        const sender = socket.user.id;
-        const result = await editMessageCore({
-          messageId,
-          sender,
-          text,
-          htmlEmoji,
-          emojiType,
-          clientTempId,
-        });
-
-        // Optionally handle result if needed (e.g., logging)
-        if (!result.success) {
-          console.error("editMessage: Failed to edit message:", result.message);
-        }
-      } catch (error) {
-        console.error("editMessage: Error in socket handler:", error);
+socket.on(
+  "editMessage",
+  async ({ messageId, text, htmlEmoji, emojiType, clientTempId }) => {
+    try {
+      // Basic validation
+      if (!messageId || !clientTempId) {
         socket.emit("editMessageError", {
-          message: error.message || "Server error",
+          message: "Missing required fields: messageId, or clientTempId",
           clientTempId,
         });
+        return;
       }
+
+      const sender = socket.user.id;
+      const result = await editMessageCore({
+        messageId,
+        sender,
+        text,
+        htmlEmoji,
+        emojiType,
+        clientTempId,
+      });
+
+      if (!result.success) {
+        console.error("editMessage: Failed to edit message:", result.message);
+        socket.emit("editMessageError", {
+          message: result.message,
+          clientTempId,
+        });
+        return;
+      }
+
+      // Emit success event with the updated message
+      socket.emit("editMessageSuccess", {
+        message: result.message,
+        clientTempId,
+      });
+    } catch (error) {
+      console.error("editMessage: Error in socket handler:", error);
+      socket.emit("editMessageError", {
+        message: error.message || "Server error",
+        clientTempId,
+      });
     }
-  );
+  }
+);
 
   // Handle socket disconnection
   socket.on("disconnect", () => {});
