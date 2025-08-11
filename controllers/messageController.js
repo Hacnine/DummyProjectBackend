@@ -1,7 +1,9 @@
 import { isValidObjectId } from "mongoose";
 import Conversation from "../models/conversationModel.js";
 import Message from "../models/messageModel.js";
-import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
+
 import {
   isUserInConversation,
   findOrCreateConversation,
@@ -9,6 +11,7 @@ import {
   computeDeletionTime,
   updateConversationState,
 } from "../utils/controller-utils/messageControllerUtils.js";
+import mongoose from "mongoose";
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
@@ -60,7 +63,7 @@ export const sendFileMessage = async (req, res) => {
     let mediaFiles = [];
     if (req?.files?.length > 0) {
       mediaFiles = req.files.map((file) => ({
-        url: file.filename,
+        url: `uploads/${file.filename}`,
         type: mapMimeTypeToMediaType(file.mimetype),
         filename: file.originalname,
         size: file.size,
@@ -574,9 +577,10 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
         messageIds,
       });
     } else {
-      console.log(
+      console
+        .log
         // `markMessagesAsRead: No valid messages to mark as read for conversation ${conversationId}, user ${userId}`
-      );
+        ();
     }
   } catch (error) {
     console.error("Error marking messages as read:", error);
@@ -743,7 +747,15 @@ export const deleteMessage = async ({
       return { success: false, message: "Invalid message ID" };
     }
 
-    const message = await Message.findById(messageId);
+    const message = await Message.findOne(
+      { _id: new mongoose.Types.ObjectId(messageId) },
+      {
+        media: 1, // array of media objects with url, type, filename, size
+        sender: 1, // needed to check if user is the owner
+        conversation: 1, // needed for authorization & socket room
+        deletedBy: 1, // needed for soft delete check
+      }
+    );
     if (!message) {
       if (res) return res.status(404).json({ message: "Message not found" });
       socket.emit("deleteMessageError", { message: "Message not found" });
@@ -765,10 +777,24 @@ export const deleteMessage = async ({
 
     let hardDelete = false;
 
-    if (message.sender.toString() === userId.toString()) {
-      // Hard delete if the requester is the message owner
-      await Message.findByIdAndDelete(messageId);
-      hardDelete = true;
+    if (message && message.sender.toString() === userId.toString()) {
+      if (Array.isArray(message.media) && message.media.length > 0) {
+        for (const mediaItem of message.media) {
+          if (mediaItem.url) {
+            const filePath = path.join(process.cwd(), mediaItem.url);
+            console.log(fs.existsSync(filePath))
+            try {
+              if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+              }
+            } catch (err) {
+              console.error(`Failed to delete file ${mediaItem.url}:`, err);
+            }
+          }
+        }
+      }
+      await Message.deleteOne({ _id: message._id });
+      console.log("Alhamdulillah")
     } else {
       // Soft delete for non-owners
       if (!message.deletedBy.includes(userId)) {
@@ -805,7 +831,7 @@ export const deleteMessage = async ({
 };
 
 // Shared logic for sending reply messages
-export const  sendReplyCore = async ({
+export const sendReplyCore = async ({
   sender,
   conversationId,
   messageId,
@@ -880,7 +906,10 @@ export const  sendReplyCore = async ({
       receiver: conversation.participants.find(
         (id) => id.toString() !== sender.toString()
       ), // Set receiver explicitly
-      text: typeof text === "string" && text.trim() !== "" ? text : htmlEmoji || null,
+      text:
+        typeof text === "string" && text.trim() !== ""
+          ? text
+          : htmlEmoji || null,
       messageType: finalMessageType,
       media: mediaFiles,
       htmlEmoji: htmlEmoji || null,
@@ -892,7 +921,10 @@ export const  sendReplyCore = async ({
 
     if (conversation) {
       conversation.last_message = {
-        message: typeof text === "string" && text.trim() !== "" ? text : htmlEmoji || "[Media]",
+        message:
+          typeof text === "string" && text.trim() !== ""
+            ? text
+            : htmlEmoji || "[Media]",
         sender,
         timestamp: new Date(),
       };
@@ -929,7 +961,10 @@ export const  sendReplyCore = async ({
     }
 
     if (!populatedMessage) {
-      console.error("sendReplyCore: Failed to populate message", newMessage._id);
+      console.error(
+        "sendReplyCore: Failed to populate message",
+        newMessage._id
+      );
       return {
         success: false,
         message: "Failed to populate message",
@@ -982,7 +1017,7 @@ export const replyMessage = async (req, res) => {
   let mediaFiles = [];
   if (req?.files?.length > 0) {
     mediaFiles = req.files.map((file) => ({
-      url: file.filename, // Use server-side filename, matching sendFileMessage
+      url: `uploads/${file.filename}`, // Use server-side filename, matching sendFileMessage
       type: mapMimeTypeToMediaType(file.mimetype),
       filename: file.originalname,
       size: file.size,
@@ -1025,7 +1060,10 @@ export const replyMessage = async (req, res) => {
     .populate("replyTo", "_id text messageType media");
 
   if (!populatedMessage) {
-    console.error("replyMessage: Failed to populate message", result.message._id);
+    console.error(
+      "replyMessage: Failed to populate message",
+      result.message._id
+    );
     return res.status(500).json({ message: "Failed to populate message" });
   }
 
