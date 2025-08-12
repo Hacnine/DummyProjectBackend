@@ -27,7 +27,16 @@ const messageSchema = new Schema(
 
     messageType: {
       type: String,
-      enum: ["text", "image", "video", "audio", "file", "system", "reply", "mixed"],
+      enum: [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "file",
+        "system",
+        "reply",
+        "mixed",
+      ],
       default: "text",
     },
 
@@ -87,6 +96,11 @@ const messageSchema = new Schema(
     scheduledDeletionTime: {
       type: Date,
       default: null,
+    },
+    reactions: {
+      type: Map,
+      of: String,
+      default: new Map(),
     },
   },
   {

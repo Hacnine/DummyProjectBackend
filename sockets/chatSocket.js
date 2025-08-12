@@ -5,6 +5,8 @@ import {
   handleSendEmojiSocket,
   sendReplyCore,
   editMessageCore,
+  addReaction,
+  removeReaction,
 } from "../controllers/messageController.js";
 
 export const registerChatHandlers = (io, socket) => {
@@ -179,6 +181,101 @@ socket.on(
     }
   }
 );
+
+  socket.on(
+    "addReaction",
+    async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
+      try {
+        if (!conversationId || !messageId || !userId || !emoji) {
+          socket.emit("reactionError", {
+            message: "Missing required fields: conversationId, messageId, userId, or emoji",
+            clientTempId,
+          });
+          return;
+        }
+
+        const result = await addReaction({
+          conversationId,
+          messageId,
+          userId,
+          emoji,
+          clientTempId,
+        });
+
+        if (!result.success) {
+          socket.emit("reactionError", {
+            message: result.message,
+            clientTempId,
+          });
+          return;
+        }
+
+        io.to(conversationId).emit("reactionUpdate", {
+          messageId: result.message._id,
+          reactions: result.message.reactions,
+          clientTempId,
+        });
+        socket.emit("reactionSuccess", {
+          messageId: result.message._id,
+          reactions: result.message.reactions,
+          clientTempId,
+        });
+      } catch (error) {
+        console.error("addReaction: Error in socket handler:", error);
+        socket.emit("reactionError", {
+          message: error.message || "Server error",
+          clientTempId,
+        });
+      }
+    }
+  );
+
+  socket.on(
+    "removeReaction",
+    async ({ conversationId, messageId, userId, clientTempId }) => {
+      try {
+        if (!conversationId || !messageId || !userId) {
+          socket.emit("reactionError", {
+            message: "Missing required fields: conversationId, messageId, or userId",
+            clientTempId,
+          });
+          return;
+        }
+
+        const result = await removeReaction({
+          conversationId,
+          messageId,
+          userId,
+          clientTempId,
+        });
+
+        if (!result.success) {
+          socket.emit("reactionError", {
+            message: result.message,
+            clientTempId,
+          });
+          return;
+        }
+
+        io.to(conversationId).emit("reactionUpdate", {
+          messageId: result.message._id,
+          reactions: result.message.reactions,
+          clientTempId,
+        });
+        socket.emit("reactionSuccess", {
+          messageId: result.message._id,
+          reactions: result.message.reactions,
+          clientTempId,
+        });
+      } catch (error) {
+        console.error("removeReaction: Error in socket handler:", error);
+        socket.emit("reactionError", {
+          message: error.message || "Server error",
+          clientTempId,
+        });
+      }
+    }
+  );
 
   // Handle socket disconnection
   socket.on("disconnect", () => {});

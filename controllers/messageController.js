@@ -1200,3 +1200,57 @@ export const getConversationImages = async (req, res) => {
     res.status(500).json({ message: "Failed to load images" });
   }
 };
+
+export const addReaction = async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return { success: false, message: "Invalid conversationId or userId" };
+    }
+
+    // Find message by _id or clientTempId
+    const message = await Message.findOne({
+      $or: [{ _id: messageId }, { clientTempId: messageId }],
+      conversation: conversationId,
+    });
+
+    if (!message) {
+      return { success: false, message: "Message not found" };
+    }
+
+    message.reactions.set(userId, emoji);
+    await message.save();
+
+    return { success: true, message };
+  } catch (error) {
+    console.error("addReaction error:", error);
+    return { success: false, message: error.message || "Server error" };
+  }
+};
+
+export const removeReaction = async ({ conversationId, messageId, userId, clientTempId }) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return { success: false, message: "Invalid conversationId or userId" };
+    }
+
+    // Find message by _id or clientTempId
+    const message = await Message.findOne({
+      $or: [{ _id: messageId }, { clientTempId: messageId }],
+      conversation: conversationId,
+    });
+
+    if (!message) {
+      return { success: false, message: "Message not found" };
+    }
+
+    message.reactions.delete(userId);
+    await message.save();
+
+    return { success: true, message };
+  } catch (error) {
+    console.error("removeReaction error:", error);
+    return { success: false, message: error.message || "Server error" };
+  }
+};
+
+
