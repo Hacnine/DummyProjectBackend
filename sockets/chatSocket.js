@@ -135,60 +135,67 @@ export const registerChatHandlers = (io, socket) => {
     }
   );
 
-socket.on(
-  "editMessage",
-  async ({ messageId, text, htmlEmoji, emojiType, clientTempId }) => {
-    try {
-      // Basic validation
-      if (!messageId || !clientTempId) {
-        socket.emit("editMessageError", {
-          message: "Missing required fields: messageId, or clientTempId",
+  socket.on(
+    "editMessage",
+    async ({ messageId, text, htmlEmoji, emojiType, clientTempId }) => {
+      try {
+        // Basic validation
+        if (!messageId || !clientTempId) {
+          socket.emit("editMessageError", {
+            message: "Missing required fields: messageId, or clientTempId",
+            clientTempId,
+          });
+          return;
+        }
+
+        const sender = socket.user.id;
+        const result = await editMessageCore({
+          messageId,
+          sender,
+          text,
+          htmlEmoji,
+          emojiType,
           clientTempId,
         });
-        return;
-      }
 
-      const sender = socket.user.id;
-      const result = await editMessageCore({
-        messageId,
-        sender,
-        text,
-        htmlEmoji,
-        emojiType,
-        clientTempId,
-      });
+        if (!result.success) {
+          console.error("editMessage: Failed to edit message:", result.message);
+          socket.emit("editMessageError", {
+            message: result.message,
+            clientTempId,
+          });
+          return;
+        }
 
-      if (!result.success) {
-        console.error("editMessage: Failed to edit message:", result.message);
-        socket.emit("editMessageError", {
+        // Emit success event with the updated message
+        socket.emit("editMessageSuccess", {
           message: result.message,
           clientTempId,
         });
-        return;
+      } catch (error) {
+        console.error("editMessage: Error in socket handler:", error);
+        socket.emit("editMessageError", {
+          message: error.message || "Server error",
+          clientTempId,
+        });
       }
-
-      // Emit success event with the updated message
-      socket.emit("editMessageSuccess", {
-        message: result.message,
-        clientTempId,
-      });
-    } catch (error) {
-      console.error("editMessage: Error in socket handler:", error);
-      socket.emit("editMessageError", {
-        message: error.message || "Server error",
-        clientTempId,
-      });
     }
-  }
-);
+  );
 
   socket.on(
     "addReaction",
     async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
       try {
-        if (!conversationId || !messageId || !userId || !emoji) {
+        if (
+          !conversationId ||
+          !messageId ||
+          !userId ||
+          !emoji ||
+          !clientTempId
+        ) {
           socket.emit("reactionError", {
-            message: "Missing required fields: conversationId, messageId, userId, or emoji",
+            message:
+              "Missing required fields: conversationId, messageId, userId, emoji, or clientTempId",
             clientTempId,
           });
           return;
@@ -234,9 +241,10 @@ socket.on(
     "removeReaction",
     async ({ conversationId, messageId, userId, clientTempId }) => {
       try {
-        if (!conversationId || !messageId || !userId) {
+        if (!conversationId || !messageId || !userId || !clientTempId) {
           socket.emit("reactionError", {
-            message: "Missing required fields: conversationId, messageId, or userId",
+            message:
+              "Missing required fields: conversationId, messageId, userId, or clientTempId",
             clientTempId,
           });
           return;

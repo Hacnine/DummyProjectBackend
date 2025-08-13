@@ -1201,22 +1201,42 @@ export const getConversationImages = async (req, res) => {
   }
 };
 
+
 export const addReaction = async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
   try {
+    // Validate inputs
     if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
       return { success: false, message: "Invalid conversationId or userId" };
     }
 
-    // Find message by _id or clientTempId
-    const message = await Message.findOne({
-      $or: [{ _id: messageId }, { clientTempId: messageId }],
-      conversation: conversationId,
-    });
+    if (messageId && !mongoose.Types.ObjectId.isValid(messageId) && !clientTempId) {
+      return { success: false, message: "Invalid messageId and no clientTempId provided" };
+    }
 
+    // Build query
+    const query = {
+      conversation: conversationId,
+      $or: [],
+    };
+
+    if (messageId && mongoose.Types.ObjectId.isValid(messageId)) {
+      query.$or.push({ _id: messageId });
+    }
+    if (clientTempId) {
+      query.$or.push({ clientTempId });
+    }
+
+    if (query.$or.length === 0) {
+      return { success: false, message: "No valid messageId or clientTempId provided" };
+    }
+
+    // Find message
+    const message = await Message.findOne(query);
     if (!message) {
       return { success: false, message: "Message not found" };
     }
 
+    // Update reactions
     message.reactions.set(userId, emoji);
     await message.save();
 
@@ -1229,20 +1249,39 @@ export const addReaction = async ({ conversationId, messageId, userId, emoji, cl
 
 export const removeReaction = async ({ conversationId, messageId, userId, clientTempId }) => {
   try {
+    // Validate inputs
     if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
       return { success: false, message: "Invalid conversationId or userId" };
     }
 
-    // Find message by _id or clientTempId
-    const message = await Message.findOne({
-      $or: [{ _id: messageId }, { clientTempId: messageId }],
-      conversation: conversationId,
-    });
+    if (messageId && !mongoose.Types.ObjectId.isValid(messageId) && !clientTempId) {
+      return { success: false, message: "Invalid messageId and no clientTempId provided" };
+    }
 
+    // Build query
+    const query = {
+      conversation: conversationId,
+      $or: [],
+    };
+
+    if (messageId && mongoose.Types.ObjectId.isValid(messageId)) {
+      query.$or.push({ _id: messageId });
+    }
+    if (clientTempId) {
+      query.$or.push({ clientTempId });
+    }
+
+    if (query.$or.length === 0) {
+      return { success: false, message: "No valid messageId or clientTempId provided" };
+    }
+
+    // Find message
+    const message = await Message.findOne(query);
     if (!message) {
       return { success: false, message: "Message not found" };
     }
 
+    // Remove reaction
     message.reactions.delete(userId);
     await message.save();
 
