@@ -99,8 +99,7 @@ const messageSchema = new Schema(
     },
     reactions: {
       type: Map,
-      of: String,
-      default: new Map(),
+      of: mongoose.Schema.Types.Mixed,
     },
   },
   {

@@ -1,6 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import Conversation from "../models/conversationModel.js";
 import Message from "../models/messageModel.js";
+import User from "../models/userModel.js";
 import fs from "fs";
 import path from "path";
 
@@ -782,7 +783,7 @@ export const deleteMessage = async ({
         for (const mediaItem of message.media) {
           if (mediaItem.url) {
             const filePath = path.join(process.cwd(), mediaItem.url);
-            console.log(fs.existsSync(filePath))
+            console.log(fs.existsSync(filePath));
             try {
               if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
@@ -794,7 +795,7 @@ export const deleteMessage = async ({
         }
       }
       await Message.deleteOne({ _id: message._id });
-      console.log("Alhamdulillah")
+      console.log("Alhamdulillah");
     } else {
       // Soft delete for non-owners
       if (!message.deletedBy.includes(userId)) {
@@ -1201,16 +1202,38 @@ export const getConversationImages = async (req, res) => {
   }
 };
 
-
-export const addReaction = async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
+export const addReaction = async ({
+  conversationId,
+  messageId,
+  userId,
+  emoji,
+  clientTempId,
+}) => {
+  console.log(conversationId, messageId, userId, emoji);
   try {
     // Validate inputs
-    if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(conversationId) ||
+      !mongoose.Types.ObjectId.isValid(userId)
+    ) {
       return { success: false, message: "Invalid conversationId or userId" };
     }
 
-    if (messageId && !mongoose.Types.ObjectId.isValid(messageId) && !clientTempId) {
-      return { success: false, message: "Invalid messageId and no clientTempId provided" };
+    if (
+      messageId &&
+      !mongoose.Types.ObjectId.isValid(messageId) &&
+      !clientTempId
+    ) {
+      return {
+        success: false,
+        message: "Invalid messageId and no clientTempId provided",
+      };
+    }
+
+    // Fetch user to get name
+    const user = await User.findById(userId).select("name");
+    if (!user) {
+      return { success: false, message: "User not found" };
     }
 
     // Build query
@@ -1227,7 +1250,10 @@ export const addReaction = async ({ conversationId, messageId, userId, emoji, cl
     }
 
     if (query.$or.length === 0) {
-      return { success: false, message: "No valid messageId or clientTempId provided" };
+      return {
+        success: false,
+        message: "No valid messageId or clientTempId provided",
+      };
     }
 
     // Find message
@@ -1237,7 +1263,12 @@ export const addReaction = async ({ conversationId, messageId, userId, emoji, cl
     }
 
     // Update reactions
-    message.reactions.set(userId, emoji);
+    if (!message.reactions) {
+      message.reactions = new Map();
+    }
+    message.reactions.set(userId, { emoji, username: user.name });
+    // Update reactions with emoji and username
+    message.reactions.set(userId, { emoji, username: user.name });
     await message.save();
 
     return { success: true, message };
@@ -1247,15 +1278,30 @@ export const addReaction = async ({ conversationId, messageId, userId, emoji, cl
   }
 };
 
-export const removeReaction = async ({ conversationId, messageId, userId, clientTempId }) => {
+export const removeReaction = async ({
+  conversationId,
+  messageId,
+  userId,
+  clientTempId,
+}) => {
   try {
     // Validate inputs
-    if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(conversationId) ||
+      !mongoose.Types.ObjectId.isValid(userId)
+    ) {
       return { success: false, message: "Invalid conversationId or userId" };
     }
 
-    if (messageId && !mongoose.Types.ObjectId.isValid(messageId) && !clientTempId) {
-      return { success: false, message: "Invalid messageId and no clientTempId provided" };
+    if (
+      messageId &&
+      !mongoose.Types.ObjectId.isValid(messageId) &&
+      !clientTempId
+    ) {
+      return {
+        success: false,
+        message: "Invalid messageId and no clientTempId provided",
+      };
     }
 
     // Build query
@@ -1272,7 +1318,10 @@ export const removeReaction = async ({ conversationId, messageId, userId, client
     }
 
     if (query.$or.length === 0) {
-      return { success: false, message: "No valid messageId or clientTempId provided" };
+      return {
+        success: false,
+        message: "No valid messageId or clientTempId provided",
+      };
     }
 
     // Find message
@@ -1291,5 +1340,3 @@ export const removeReaction = async ({ conversationId, messageId, userId, client
     return { success: false, message: error.message || "Server error" };
   }
 };
-
-

@@ -185,13 +185,13 @@ export const registerChatHandlers = (io, socket) => {
   socket.on(
     "addReaction",
     async ({ conversationId, messageId, userId, emoji, clientTempId }) => {
+      console.log(conversationId, messageId, userId, emoji)
       try {
         if (
           !conversationId ||
           !messageId ||
           !userId ||
-          !emoji ||
-          !clientTempId
+          !emoji 
         ) {
           socket.emit("reactionError", {
             message:
