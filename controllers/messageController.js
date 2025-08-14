@@ -11,6 +11,7 @@ import {
   verifyUserInConversation,
   computeDeletionTime,
   updateConversationState,
+  validateAndBuildQuery,
 } from "../utils/controller-utils/messageControllerUtils.js";
 import mongoose from "mongoose";
 
@@ -1207,28 +1208,19 @@ export const addReaction = async ({
   messageId,
   userId,
   emoji,
-  clientTempId,
 }) => {
-  console.log(conversationId, messageId, userId, emoji);
   try {
-    // Validate inputs
-    if (
-      !mongoose.Types.ObjectId.isValid(conversationId) ||
-      !mongoose.Types.ObjectId.isValid(userId)
-    ) {
-      return { success: false, message: "Invalid conversationId or userId" };
+    // Validate and get message
+    const validationResult = await validateAndBuildQuery({
+      conversationId,
+      messageId,
+      userId,
+    });
+    if (!validationResult.success) {
+      return validationResult;
     }
 
-    if (
-      messageId &&
-      !mongoose.Types.ObjectId.isValid(messageId) &&
-      !clientTempId
-    ) {
-      return {
-        success: false,
-        message: "Invalid messageId and no clientTempId provided",
-      };
-    }
+    const { message } = validationResult;
 
     // Fetch user to get name
     const user = await User.findById(userId).select("name");
@@ -1236,37 +1228,11 @@ export const addReaction = async ({
       return { success: false, message: "User not found" };
     }
 
-    // Build query
-    const query = {
-      conversation: conversationId,
-      $or: [],
-    };
-
-    if (messageId && mongoose.Types.ObjectId.isValid(messageId)) {
-      query.$or.push({ _id: messageId });
-    }
-    if (clientTempId) {
-      query.$or.push({ clientTempId });
-    }
-
-    if (query.$or.length === 0) {
-      return {
-        success: false,
-        message: "No valid messageId or clientTempId provided",
-      };
-    }
-
-    // Find message
-    const message = await Message.findOne(query);
-    if (!message) {
-      return { success: false, message: "Message not found" };
-    }
-
-    // Update reactions
+    // Initialize reactions map if not exists
     if (!message.reactions) {
       message.reactions = new Map();
     }
-    message.reactions.set(userId, { emoji, username: user.name });
+
     // Update reactions with emoji and username
     message.reactions.set(userId, { emoji, username: user.name });
     await message.save();
@@ -1278,57 +1244,19 @@ export const addReaction = async ({
   }
 };
 
-export const removeReaction = async ({
-  conversationId,
-  messageId,
-  userId,
-  clientTempId,
-}) => {
+export const removeReaction = async ({ conversationId, messageId, userId }) => {
   try {
-    // Validate inputs
-    if (
-      !mongoose.Types.ObjectId.isValid(conversationId) ||
-      !mongoose.Types.ObjectId.isValid(userId)
-    ) {
-      return { success: false, message: "Invalid conversationId or userId" };
+    // Validate and get message
+    const validationResult = await validateAndBuildQuery({
+      conversationId,
+      messageId,
+      userId,
+    });
+    if (!validationResult.success) {
+      return validationResult;
     }
 
-    if (
-      messageId &&
-      !mongoose.Types.ObjectId.isValid(messageId) &&
-      !clientTempId
-    ) {
-      return {
-        success: false,
-        message: "Invalid messageId and no clientTempId provided",
-      };
-    }
-
-    // Build query
-    const query = {
-      conversation: conversationId,
-      $or: [],
-    };
-
-    if (messageId && mongoose.Types.ObjectId.isValid(messageId)) {
-      query.$or.push({ _id: messageId });
-    }
-    if (clientTempId) {
-      query.$or.push({ clientTempId });
-    }
-
-    if (query.$or.length === 0) {
-      return {
-        success: false,
-        message: "No valid messageId or clientTempId provided",
-      };
-    }
-
-    // Find message
-    const message = await Message.findOne(query);
-    if (!message) {
-      return { success: false, message: "Message not found" };
-    }
+    const { message } = validationResult;
 
     // Remove reaction
     message.reactions.delete(userId);

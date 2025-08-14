@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Conversation from "../../models/conversationModel.js";
+import Message from "../../models/messageModel.js";
 
 // Helper to validate ObjectId
 export const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -84,3 +85,48 @@ export const updateConversationState = async (conversation, senderId, lastText) 
   await conversation.save();
 };
 
+ // Shared validation and query-building function
+export const validateAndBuildQuery = async ({ conversationId, messageId, userId }) => {
+  // Validate inputs
+  if (
+    !mongoose.Types.ObjectId.isValid(conversationId) ||
+    !mongoose.Types.ObjectId.isValid(userId)
+  ) {
+    return { success: false, message: "Invalid conversationId or userId" };
+  }
+
+  if (
+    messageId &&
+    !mongoose.Types.ObjectId.isValid(messageId) 
+  ) {
+    return {
+      success: false,
+      message: "Invalid messageId  provided",
+    };
+  }
+
+  // Build query
+  const query = {
+    conversation: conversationId,
+    $or: [],
+  };
+
+  if (messageId && mongoose.Types.ObjectId.isValid(messageId)) {
+    query.$or.push({ _id: messageId });
+  }
+
+  if (query.$or.length === 0) {
+    return {
+      success: false,
+      message: "No valid messageId or clientTempId provided",
+    };
+  }
+
+  // Find message
+  const message = await Message.findOne(query);
+  if (!message) {
+    return { success: false, message: "Message not found" };
+  }
+
+  return { success: true, message };
+};
