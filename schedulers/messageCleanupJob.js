@@ -2,20 +2,22 @@ import cron from "node-cron";
 import path from "path";
 import { promises as fsPromises } from "fs";
 import Message from "../models/messageModel.js";
+import { io } from "../app.js";
 
 // Run every 5 minutes
 const messageCleanupJob = cron.schedule("*/5 * * * *", async () => {
   try {
     const now = new Date();
 
-    //  Find messages scheduled for deletion
+    // Find messages scheduled for deletion, including necessary fields
     const messagesToDelete = await Message.find(
       { scheduledDeletionTime: { $lte: now } },
-      { media: 1 } // only get media field for cleanup
+      { media: 1, conversation: 1, sender: 1 } // Include conversation and sender
     );
 
-    //  Delete associated media files
+    // Process each message
     for (const msg of messagesToDelete) {
+      // Delete associated media files
       if (Array.isArray(msg.media) && msg.media.length > 0) {
         for (const mediaItem of msg.media) {
           if (mediaItem.url) {
@@ -26,12 +28,19 @@ const messageCleanupJob = cron.schedule("*/5 * * * *", async () => {
             const filePath = path.join(process.cwd(), correctedPath);
 
             // Non-blocking delete
-            fsPromises.unlink(filePath).catch((err) => {
+            await fsPromises.unlink(filePath).catch((err) => {
               console.error(`[Cron] Failed to delete file ${filePath}:`, err);
             });
           }
         }
       }
+
+      // Emit messageDeleted event with hardDelete: true
+      io.to(msg.conversation.toString()).emit("messageDeleted", {
+        messageId: msg._id.toString(),
+        userId: msg.sender.toString(), // Use the original sender as the userId
+        hardDelete: true,
+      });
     }
 
     // Delete messages from DB
@@ -48,4 +57,3 @@ const messageCleanupJob = cron.schedule("*/5 * * * *", async () => {
 });
 
 export default messageCleanupJob;
-
