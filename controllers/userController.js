@@ -11,6 +11,7 @@ import { createUserApproval } from "../utils/userApprovalMiddleware.js";
 import AdminSettings from "../models/adminSettingsModel.js";
 import asyncHandler from 'express-async-handler';
 import { param, validationResult } from 'express-validator';
+import { Block } from "../models/blockModel.js";
 
 const register = async (req, res) => {
   try {
@@ -563,6 +564,47 @@ export const updatePassword = asyncHandler(async (req, res) => {
     user: { name: user.name, email: user.email }
   });
 });
+
+
+// Block a user
+export const blockUser = async (req, res) => {
+  try {
+    const blockerId = req.user._id; // assuming you have auth middleware
+    const { blockedId } = req.body;
+
+    if (blockerId.toString() === blockedId) {
+      return res.status(400).json({ message: "You cannot block yourself." });
+    }
+
+    // Check if already blocked
+    const existing = await Block.findOne({ blocker: blockerId, blocked: blockedId });
+    if (existing) {
+      return res.status(400).json({ message: "User already blocked." });
+    }
+
+    const block = await Block.create({ blocker: blockerId, blocked: blockedId });
+    res.status(201).json(block);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Unblock a user
+export const unblockUser = async (req, res) => {
+  try {
+    const blockerId = req.user._id;
+    const { userId } = req.params;
+
+    const deleted = await Block.findOneAndDelete({ blocker: blockerId, blocked: userId });
+    if (!deleted) {
+      return res.status(404).json({ message: "User not blocked." });
+    }
+
+    res.json({ message: "User unblocked successfully." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 
 
 export {

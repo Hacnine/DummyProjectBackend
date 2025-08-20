@@ -18,8 +18,6 @@ import {
   updateName,
   updateEmail,
   updatePassword,
-  blockUser,
-  unblockUser,
 } from "../controllers/userController.js";
 import { isLogin, isLogout } from "../middlewares/auth.middleware.js";
 import rateLimit from "express-rate-limit";
@@ -116,8 +114,7 @@ userRouter.patch('/name', isLogin, nameValidation, updateName);
 userRouter.patch('/email', isLogin, emailValidation, updateEmail);
 userRouter.patch('/password', isLogin, passwordValidation, updatePassword);
 
-userRouter.post("/block", isLogin, blockUser);
-userRouter.delete("/block/:userId", isLogin, unblockUser);
+
 
 
 export default userRouter;
