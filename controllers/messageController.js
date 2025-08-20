@@ -530,7 +530,7 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
     }
 
     // Update Message documents: add userId to readBy for valid, non-deleted messages
-    const updatedMessages = await Message.updateMany(
+    await Message.updateMany(
       {
         conversation: conversationId,
         receiver: userId,
@@ -547,42 +547,36 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
       {
         $addToSet: { readBy: { user: userId, readAt: new Date() } },
         $set: { status: "delivered" },
-      },
-      { new: true }
+      }
     );
 
-    // Get IDs of updated messages
-    const messageIds = (
-      await Message.find({
-        conversation: conversationId,
-        receiver: userId,
-        "readBy.user": userId,
-        deletedBy: { $nin: [userId] }, // Not deleted by user
-        $or: [
-          { text: { $exists: true, $ne: "" } },
-          { media: { $exists: true, $ne: [] } },
-          { voice: { $exists: true } },
-          { call: { $exists: true } },
-          { img: { $exists: true } },
-        ],
-      }).select("_id")
-    ).map((msg) => msg._id.toString());
+    // Fetch full updated messages
+    const updatedMessages = await Message.find({
+      conversation: conversationId,
+      receiver: userId,
+      "readBy.user": userId,
+      deletedBy: { $nin: [userId] },
+      $or: [
+        { text: { $exists: true, $ne: "" } },
+        { media: { $exists: true, $ne: [] } },
+        { voice: { $exists: true } },
+        { call: { $exists: true } },
+        { img: { $exists: true } },
+      ],
+    })
+      .populate("sender", "username")
+      .populate("receiver", "username")
+      .populate("replyTo", "_id text messageType media");
 
-    // Log for debugging
-    // console.log(`markMessagesAsRead: Emitting messagesRead for conversation ${conversationId}, user ${userId}, messageIds:`, messageIds);
-
-    // Emit messagesRead event only if there are valid message IDs
-    if (messageIds.length > 0) {
+    // Emit messagesRead event with full message objects
+    if (updatedMessages.length > 0) {
       io.to(conversationId).emit("messagesRead", {
         conversationId,
         userId,
-        messageIds,
+        messages: updatedMessages.map(msg => msg.toObject()),
       });
     } else {
-      console
-        .log
-        // `markMessagesAsRead: No valid messages to mark as read for conversation ${conversationId}, user ${userId}`
-        ();
+      // No valid messages to mark as read
     }
   } catch (error) {
     console.error("Error marking messages as read:", error);
