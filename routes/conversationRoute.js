@@ -1,5 +1,5 @@
 import express from 'express';
-import { createConversation, createGroup, getAllConversations, getConversationById, searchGroups, updateConversationThemeIndex, updateMessageRequestStatus  } from '../controllers/conversationController.js';
+import { createConversation, createGroup, deleteConversation, getAllConversations, getConversationById, searchGroups, updateConversationThemeIndex, updateMessageRequestStatus  } from '../controllers/conversationController.js';
 import { isLogin } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
@@ -12,7 +12,7 @@ router.get('/search-groups', searchGroups);
 
 router.patch("/update-message-request-status/:conversationId", updateMessageRequestStatus);
 router.patch("/:id/theme-index", updateConversationThemeIndex);
-
+router.delete("/conversation/:id", deleteConversation);
 
 
 router.get('/:userId', getAllConversations); 

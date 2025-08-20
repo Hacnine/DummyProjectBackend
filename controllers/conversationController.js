@@ -398,6 +398,31 @@ export const updateConversationThemeIndex = async (req, res) => {
   }
 };
 
+
+export const deleteConversation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if the ID is a valid ObjectId
+    if (!id || id.length !== 24) {
+      return res.status(400).json({ message: "Invalid conversation ID." });
+    }
+
+    // Try to find and delete the conversation
+    const deletedConversation = await Conversation.findByIdAndDelete(id);
+
+    if (!deletedConversation) {
+      return res.status(404).json({ message: "Conversation not found." });
+    }
+
+    res.status(200).json({ message: "Conversation deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting conversation:", error);
+    res.status(500).json({ message: "Server error. Could not delete conversation." });
+  }
+};
+
+
 export {
   createConversation,
   getAllConversations,

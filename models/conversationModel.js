@@ -9,7 +9,7 @@ const conversationSchema = new Schema(
     status: {
       type: String,
       enum: ["pending", "accepted", "rejected"],
-      default: null,
+      default: "pending",
     },
     visibility: {
       type: String,
