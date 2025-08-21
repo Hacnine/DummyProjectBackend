@@ -12,6 +12,7 @@ import AdminSettings from "../models/adminSettingsModel.js";
 import asyncHandler from 'express-async-handler';
 import { param, validationResult } from 'express-validator';
 import { Block } from "../models/blockModel.js";
+import Conversation from "../models/conversationModel.js";
 
 const register = async (req, res) => {
   try {
@@ -566,24 +567,93 @@ export const updatePassword = asyncHandler(async (req, res) => {
 });
 
 
+//  Helper: Add user to conversation blockList
+const addToConversationBlockList = async (
+  conversationId,
+  blockerId,
+  blockedId
+) => {
+  const conversation = await Conversstion.findById(conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const alreadyBlocked = conversation.blockList.some(
+    (entry) =>
+      entry.blockedBy.toString() === blockerId.toString() &&
+      entry.blockedUser.toString() === blockedId.toString()
+  );
+
+  if (!alreadyBlocked) {
+    conversation.blockList.push({
+      blockedBy: blockerId,
+      blockedUser: blockedId,
+    });
+    await conversation.save();
+  }
+
+  return conversation;
+};
+// Helper: Remove user from conversation blockList
+const removeFromConversationBlockList = async (
+  conversationId,
+  blockerId,
+  blockedId
+) => {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  conversation.blockList = conversation.blockList.filter(
+    (entry) =>
+      !(
+        entry.blockedBy.toString() === blockerId.toString() &&
+        entry.blockedUser.toString() === blockedId.toString()
+      )
+  );
+
+  await conversation.save();
+  return conversation;
+};
+
 // Block a user
 export const blockUser = async (req, res) => {
   try {
-    const blockerId = req.user._id; // assuming you have auth middleware
-    const { blockedId } = req.body;
+    const blockerId = req.user._id;
+    const { blockedId, conversationId } = req.body;
 
     if (blockerId.toString() === blockedId) {
       return res.status(400).json({ message: "You cannot block yourself." });
     }
 
-    // Check if already blocked
-    const existing = await Block.findOne({ blocker: blockerId, blocked: blockedId });
-    if (existing) {
-      return res.status(400).json({ message: "User already blocked." });
+    // ---- Global Block ----
+    const existingGlobal = await Block.findOne({
+      blocker: blockerId,
+      blocked: blockedId,
+    });
+    if (existingGlobal) {
+      return res
+        .status(400)
+        .json({ message: "User already globally blocked." });
     }
 
-    const block = await Block.create({ blocker: blockerId, blocked: blockedId });
-    res.status(201).json(block);
+    const globalBlock = await Block.create({
+      blocker: blockerId,
+      blocked: blockedId,
+    });
+
+    // ---- Conversation-level Block (optional) ----
+    let updatedConversation = null;
+    if (conversationId) {
+      updatedConversation = await addToConversationBlockList(
+        conversationId,
+        blockerId,
+        blockedId
+      );
+    }
+
+    res.status(201).json({
+      message: "User blocked successfully.",
+      globalBlock,
+      conversation: updatedConversation,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -593,14 +663,34 @@ export const blockUser = async (req, res) => {
 export const unblockUser = async (req, res) => {
   try {
     const blockerId = req.user._id;
-    const { userId } = req.params;
+    const { userId } = req.params; // blocked user
+    const { conversationId } = req.body; // optional
 
-    const deleted = await Block.findOneAndDelete({ blocker: blockerId, blocked: userId });
-    if (!deleted) {
+    // ---- Global Unblock ----
+    const deletedGlobal = await Block.findOneAndDelete({
+      blocker: blockerId,
+      blocked: userId,
+    });
+
+    // ---- Conversation-level Unblock ----
+    let updatedConversation = null;
+    if (conversationId) {
+      updatedConversation = await removeFromConversationBlockList(
+        conversationId,
+        blockerId,
+        userId
+      );
+    }
+
+    if (!deletedGlobal && !updatedConversation) {
       return res.status(404).json({ message: "User not blocked." });
     }
 
-    res.json({ message: "User unblocked successfully." });
+    res.json({
+      message: "User unblocked successfully.",
+      deletedGlobal,
+      conversation: updatedConversation,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

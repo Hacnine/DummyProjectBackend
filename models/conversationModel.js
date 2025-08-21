@@ -76,6 +76,17 @@ const conversationSchema = new Schema(
       default: 24,
       min: 1,
     },
+    blockList: [
+      {
+        blockedBy: { type: Schema.Types.ObjectId, ref: "User", required: true }, // Who blocked
+        blockedUser: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        }, // Who is blocked
+        blockedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );
