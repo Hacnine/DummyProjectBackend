@@ -573,7 +573,7 @@ const addToConversationBlockList = async (
   blockerId,
   blockedId
 ) => {
-  const conversation = await Conversstion.findById(conversationId);
+  const conversation = await Conversation.findById(conversationId);
   if (!conversation) throw new Error("Conversation not found");
 
   const alreadyBlocked = conversation.blockList.some(
