@@ -112,56 +112,31 @@ export const searchGroups = async (req, res) => {
     }
 
     const escapedQuery = escapeRegex(query);
-    let searchCriteria = [];
 
     // Search for public group conversations by name
-    searchCriteria.push({
+    const searchCriteria = {
       "group.name": { $regex: escapedQuery, $options: "i" },
       "group.is_group": true,
       "group.type": "group",
       visibility: "public",
-    });
+      participants: { $nin: [currentUserId] },
+    };
 
-    // Search for users by name or email
-    const users = await User.find({
-      $or: [
-        { name: { $regex: escapedQuery, $options: "i" } },
-        { email: { $regex: escapedQuery, $options: "i" } },
-      ],
-    }).select("_id");
+    const total = await Conversation.countDocuments(searchCriteria);
 
-    // Validate user IDs
-    if (users.length > 0) {
-      const userIds = users
-        .map((user) => user._id)
-        .filter((id) => mongoose.isValidObjectId(id));
-
-      if (userIds.length > 0) {
-        searchCriteria.push({
-          participants: { $in: userIds },
-          "group.is_group": true,
-          "group.type": "group",
-          visibility: "public",
-        });
-      } else {
-        console.warn("No valid user IDs found for query:", query);
-      }
-    }
-
-    // If no search criteria, return empty result
-    const finalCriteria =
-      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
-
-    const total = await Conversation.countDocuments(finalCriteria);
-
-    const conversations = await Conversation.find(finalCriteria)
+    const conversations = await Conversation.find(searchCriteria)
       .select("group.name group.image group.intro group.type participants")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
 
     if (!conversations.length) {
-      return res.status(404).json({ message: "Not found" });
+      return res.status(200).json({
+        groups: [],
+        total: 0,
+        page: pageNum,
+        totalPages: 0,
+      });
     }
 
     // Fetch pending join requests for the current user
@@ -174,28 +149,20 @@ export const searchGroups = async (req, res) => {
       .select("classId")
       .lean();
 
-    // Create a Set of conversation IDs with pending requests for O(1) lookup
+    // Use Set for O(1) lookup of pending request classIds
     const pendingRequestIds = new Set(
       pendingRequests.map((req) => req.classId.toString())
     );
 
-    const formattedGroups = conversations.map((conv) => {
-      const alreadyMember = conv.participants?.some(
-        (participantId) => participantId.toString() === currentUserId.toString()
-      );
-
-      return {
-        _id: conv._id.toString(),
-        name: conv.group?.name || "Unnamed Group",
-        image: conv.group?.image || null,
-        intro: conv.group?.intro || "N/A",
-        type: conv.group?.type || "group",
-        members: conv.participants?.length || 0,
-        status: alreadyMember ? "active" : "inactive",
-        alreadyMember: !!alreadyMember,
-        hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
-      };
-    });
+    const formattedGroups = conversations.map((conv) => ({
+      _id: conv._id.toString(),
+      name: conv.group?.name || "Unnamed Group",
+      image: conv.group?.image || null,
+      intro: conv.group?.intro || "N/A",
+      type: conv.group?.type || "group",
+      members: conv.participants?.length || 0,
+      hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
+    }));
 
     res.status(200).json({
       groups: formattedGroups,
@@ -204,8 +171,8 @@ export const searchGroups = async (req, res) => {
       totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
-    console.error("Error searching groups:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error searching groups:", error.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -422,6 +389,107 @@ export const deleteConversation = async (req, res) => {
   }
 };
 
+
+export const getPendingConversations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
+    // Find all pending one-to-one conversations for the user
+    const conversations = await Conversation.find({
+      participants: userId,
+      status: "pending",
+      "group.is_group": false,
+    })
+      .populate("participants", "name email image")
+      .populate("last_message.sender", "name email image")
+      .sort({ updatedAt: -1 });
+
+    res.json({ conversations });
+  } catch (error) {
+    console.error("Error fetching pending conversations:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getGroupJoinRequests = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let query = {};
+    let groups = [];
+
+    // If user is an admin/moderator, fetch groups where they have privileges
+    groups = await Conversation.find({
+      "group.type": "group",
+      $or: [
+        { "group.admins": userId },
+        { "group.moderators": userId },
+      ],
+    }).select("_id group.name");
+
+    if (groups.length > 0) {
+      query = {
+        classId: { $in: groups.map((g) => g._id) },
+        status: "pending",
+      };
+    } else {
+      // Non-admin/moderators can only see their own join requests (any status)
+      groups = await Conversation.find({
+        "group.type": "group",
+        _id: { $in: await JoinRequest.find({ userId }).distinct("classId") },
+      }).select("_id group.name");
+      query = { userId };
+    }
+
+    // Find join requests based on the query
+    const requests = await JoinRequest.find(query)
+      .populate("userId", "name email image")
+      .populate("classId", "group.name")
+      .sort({ requestedAt: -1 });
+
+    // Group requests by group
+    const groupedRequests = groups.map((groupItem) => ({
+      groupId: groupItem._id,
+      groupName: groupItem.group.name,
+      requests: requests
+        .filter((request) => request.classId._id.toString() === groupItem._id.toString())
+        .map((request) => ({
+          _id: request._id,
+          user: {
+            _id: request.userId._id,
+            name: request.userId.name,
+            email: request.userId.email,
+            image: request.userId.image,
+          },
+          status: request.status,
+          requestedAt: request.requestedAt,
+        })),
+    }));
+
+    // Filter out groups with no requests
+    const filteredGroupedRequests = groupedRequests.filter((group) => group.requests.length > 0);
+
+    res.json({ groups: filteredGroupedRequests });
+  } catch (error) {
+    console.error("Error fetching group join requests:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
 
 export {
   createConversation,

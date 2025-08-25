@@ -1,6 +1,7 @@
 import express from 'express';
-import { createConversation, createGroup, deleteConversation, getAllConversations, getConversationById, searchGroups, updateConversationThemeIndex, updateMessageRequestStatus  } from '../controllers/conversationController.js';
+import { createConversation, createGroup, deleteConversation, getAllConversations, getConversationById, getGroupJoinRequests, getPendingConversations, searchGroups, updateConversationThemeIndex, updateMessageRequestStatus  } from '../controllers/conversationController.js';
 import { isLogin } from "../middlewares/auth.middleware.js";
+import { getClassJoinRequests } from '../controllers/classController.js';
 
 const router = express.Router();
 router.use(isLogin)
@@ -13,6 +14,11 @@ router.get('/search-groups', searchGroups);
 router.patch("/update-message-request-status/:conversationId", updateMessageRequestStatus);
 router.patch("/:id/theme-index", updateConversationThemeIndex);
 router.delete("/conversation/:id", deleteConversation);
+
+router.get('/pending', getPendingConversations);
+router.get('/groups', getGroupJoinRequests)
+router.get('/groups', getClassJoinRequests)
+
 
 
 router.get('/:userId', getAllConversations); 

@@ -17,6 +17,7 @@ export const createClass = async (req, res) => {
       startTime,
       cutoffTime,
       selectedDays = [],
+      visibility = "public",
     } = req.body;
     const teacherId = req.user._id;
 
@@ -69,7 +70,7 @@ export const createClass = async (req, res) => {
         // moderators: [],
         // fileSendingAllowed: false,
       },
-      visibility: "private",
+      visibility: visibility,
     });
 
     await newClass.save();
@@ -120,7 +121,11 @@ export const addModerator = async (req, res) => {
     }
 
     // Check if user is a participant of the class
-    if (!classGroup.participants.some((participant) => participant.toString() === userId)) {
+    if (
+      !classGroup.participants.some(
+        (participant) => participant.toString() === userId
+      )
+    ) {
       return res
         .status(400)
         .json({ message: "User must be a class participant first" });
@@ -188,7 +193,11 @@ export const addMember = async (req, res) => {
     const classGroup = req.classGroup;
 
     // Check if user is already a participant
-    if (classGroup.participants.some((participant) => participant.toString() === userId)) {
+    if (
+      classGroup.participants.some(
+        (participant) => participant.toString() === userId
+      )
+    ) {
       return res.status(400).json({ message: "User is already a participant" });
     }
 
@@ -232,7 +241,11 @@ export const removeMember = async (req, res) => {
     const classGroup = req.classGroup;
 
     // Check if user is a participant
-    if (!classGroup.participants.some((participant) => participant.toString() === userId)) {
+    if (
+      !classGroup.participants.some(
+        (participant) => participant.toString() === userId
+      )
+    ) {
       return res.status(400).json({ message: "User is not a participant" });
     }
 
@@ -281,7 +294,11 @@ export const requestJoinClass = async (req, res) => {
     }
 
     // Check if already a participant
-    if (conversation.participants.some((participant) => participant.toString() === userId)) {
+    if (
+      conversation.participants.some(
+        (participant) => participant.toString() === userId
+      )
+    ) {
       return res
         .status(400)
         .json({ message: "You are already a participant of this class" });
@@ -354,8 +371,13 @@ export const approveJoinRequest = async (req, res) => {
     const { classId, userId } = req.params;
 
     // Validate inputs
-    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
-      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    if (
+      !mongoose.isValidObjectId(classId) ||
+      !mongoose.isValidObjectId(userId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Valid Class ID and User ID are required" });
     }
 
     const joinRequest = await JoinRequest.findOne({
@@ -369,7 +391,11 @@ export const approveJoinRequest = async (req, res) => {
 
     // Add user to class
     const classGroup = req.classGroup;
-    if (classGroup.participants.some((participant) => participant.toString() === userId)) {
+    if (
+      classGroup.participants.some(
+        (participant) => participant.toString() === userId
+      )
+    ) {
       return res.status(400).json({ message: "User is already a participant" });
     }
 
@@ -406,8 +432,13 @@ export const rejectJoinRequest = async (req, res) => {
     const { classId, userId } = req.params;
 
     // Validate inputs
-    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
-      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    if (
+      !mongoose.isValidObjectId(classId) ||
+      !mongoose.isValidObjectId(userId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Valid Class ID and User ID are required" });
     }
 
     const joinRequest = await JoinRequest.findOne({
@@ -451,15 +482,25 @@ export const updateClassSettings = async (req, res) => {
     }
 
     // Validate updates (basic example, adjust based on your schema)
-    const allowedFields = ["classType", "fileSendingAllowed", "startTime", "cutoffTime", "checkInterval", "selectedDays"];
+    const allowedFields = [
+      "classType",
+      "fileSendingAllowed",
+      "startTime",
+      "cutoffTime",
+      "checkInterval",
+      "selectedDays",
+    ];
     const updateKeys = Object.keys(updates);
-    if (updateKeys.length === 0 || !updateKeys.every((key) => allowedFields.includes(key))) {
+    if (
+      updateKeys.length === 0 ||
+      !updateKeys.every((key) => allowedFields.includes(key))
+    ) {
       return res.status(400).json({ message: "Invalid settings provided" });
     }
 
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,
-      { $set: { "group": { ...req.classGroup.group, ...updates } } },
+      { $set: { group: { ...req.classGroup.group, ...updates } } },
       { new: true }
     );
     if (!classGroup) {
@@ -472,7 +513,6 @@ export const updateClassSettings = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 export const getClassStats = async (req, res) => {
   try {
@@ -542,12 +582,22 @@ export const leaveClass = async (req, res) => {
     }
 
     // Check if user is a participant
-    if (!classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
-      return res.status(400).json({ message: "User is not a participant of this class" });
+    if (
+      !classGroup.participants.some(
+        (participant) => participant.toString() === userId.toString()
+      )
+    ) {
+      return res
+        .status(400)
+        .json({ message: "User is not a participant of this class" });
     }
 
     // Prevent admin from leaving (optional, adjust based on requirements)
-    if (classGroup.group.admins.some((admin) => admin.toString() === userId.toString())) {
+    if (
+      classGroup.group.admins.some(
+        (admin) => admin.toString() === userId.toString()
+      )
+    ) {
       return res.status(400).json({ message: "Admins cannot leave the class" });
     }
 
@@ -573,7 +623,6 @@ export const leaveClass = async (req, res) => {
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
-
 
 export const searchClasses = async (req, res) => {
   try {
@@ -606,29 +655,33 @@ export const searchClasses = async (req, res) => {
     searchCriteria.push({
       "group.name": { $regex: escapedQuery, $options: "i" },
       "group.is_group": true,
-      "group.type": "classroom", // Updated from "class" to match schema
+      "group.type": "classroom",
       visibility: "public",
+      participants: { $nin: [currentUserId] },
     });
 
-    // Search for public conversations by participant names/emails
-    const users = await User.find({
-      $or: [
-        { name: { $regex: escapedQuery, $options: "i" } },
-        { email: { $regex: escapedQuery, $options: "i" } },
-      ],
-    }).select("_id");
+    // // Search for public conversations by participant names/emails
+    // const users = await User.find({
+    //   $or: [
+    //     { name: { $regex: escapedQuery, $options: "i" } },
+    //     { email: { $regex: escapedQuery, $options: "i" } },
+    //   ],
+    // }).select("_id");
 
-    if (users.length > 0) {
-      const userIds = users.map((user) => user._id).filter((id) => mongoose.isValidObjectId(id));
-      if (userIds.length > 0) {
-        searchCriteria.push({
-          participants: { $in: userIds },
-          "group.is_group": true,
-          "group.type": "classroom", // Updated from "class"
-          visibility: "public",
-        });
-      }
-    }
+    // if (users.length > 0) {
+    //   const userIds = users
+    //     .map((user) => user._id)
+    //     .filter((id) => mongoose.isValidObjectId(id));
+    //   if (userIds.length > 0) {
+    //     searchCriteria.push({
+    //       participants: { $in: userIds },
+    //       "group.is_group": true,
+    //       "group.type": "classroom",
+    //       visibility: "public",
+    //       participants: { $nin: [currentUserId] },
+    //     });
+    //   }
+    // }
 
     const finalCriteria = searchCriteria.length > 0 ? { $or: searchCriteria } : {};
 
@@ -641,23 +694,37 @@ export const searchClasses = async (req, res) => {
       .lean();
 
     if (!conversations.length) {
-      return res.status(404).json({ error: "No public classes found" });
+      return res.status(200).json({
+        conversations: [],
+        total: 0,
+        page: pageNum,
+        totalPages: 0,
+      });
     }
 
-    const formattedConversations = conversations.map((conv) => {
-      const alreadyMember = conv.participants?.some(
-        (participantId) => participantId.toString() === currentUserId.toString()
-      );
+    // Fetch pending join requests for the current user
+    const conversationIds = conversations.map((conv) => conv._id);
+    const pendingRequests = await JoinRequest.find({
+      userId: currentUserId,
+      classId: { $in: conversationIds },
+      status: "pending",
+    })
+      .select("classId")
+      .lean();
 
-      return {
-        _id: conv._id.toString(), // Ensure string ID for frontend
-        name: conv.group?.name || "Unnamed Class",
-        image: conv.group?.image || null,
-        groupType: conv.group?.type || "classroom",
-        alreadyMember: !!alreadyMember,
-        participantCount: conv.participants?.length || 0, // Added for clarity
-      };
-    });
+    // Use Set for O(1) lookup of pending request classIds
+    const pendingRequestIds = new Set(
+      pendingRequests.map((req) => req.classId.toString())
+    );
+
+    const formattedConversations = conversations.map((conv) => ({
+      _id: conv._id.toString(),
+      name: conv.group?.name || "Unnamed Class",
+      image: conv.group?.image || null,
+      groupType: conv.group?.type || "classroom",
+      participantCount: conv.participants?.length || 0,
+      hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
+    }));
 
     res.status(200).json({
       conversations: formattedConversations,
@@ -666,8 +733,8 @@ export const searchClasses = async (req, res) => {
       totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
-    console.error("Error searching classes:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error searching classes:", error.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -699,13 +766,23 @@ export const logAttendance = async (req, res) => {
     const userId = req.user._id;
 
     // Validate inputs
-    if (!mongoose.isValidObjectId(classId) || !mongoose.isValidObjectId(userId)) {
-      return res.status(400).json({ message: "Valid Class ID and User ID are required" });
+    if (
+      !mongoose.isValidObjectId(classId) ||
+      !mongoose.isValidObjectId(userId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Valid Class ID and User ID are required" });
     }
 
     // Check if user is a participant of the class
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
+    if (
+      !classGroup ||
+      !classGroup.participants.some(
+        (participant) => participant.toString() === userId.toString()
+      )
+    ) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -782,7 +859,8 @@ export const startAlertnessSession = async (req, res) => {
         sessionToEnd.isActive = false;
         sessionToEnd.endTime = new Date();
         sessionToEnd.responseRate =
-          (sessionToEnd.responses.length / sessionToEnd.totalParticipants) * 100;
+          (sessionToEnd.responses.length / sessionToEnd.totalParticipants) *
+          100;
         await sessionToEnd.save();
 
         // Notify class about session end
@@ -870,7 +948,12 @@ export const submitAssignment = async (req, res) => {
 
     // Check if user is a participant of the class
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.participants.some((participant) => participant.toString() === userId.toString())) {
+    if (
+      !classGroup ||
+      !classGroup.participants.some(
+        (participant) => participant.toString() === userId.toString()
+      )
+    ) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -909,7 +992,9 @@ export const markAssignment = async (req, res) => {
 
     // Validate inputs
     if (!mongoose.isValidObjectId(submissionId)) {
-      return res.status(400).json({ message: "Valid Submission ID is required" });
+      return res
+        .status(400)
+        .json({ message: "Valid Submission ID is required" });
     }
     if (mark === undefined || mark < 0 || mark > 100) {
       return res
@@ -924,7 +1009,12 @@ export const markAssignment = async (req, res) => {
 
     // Check if user is admin of the class
     const classGroup = await Conversation.findById(submission.classId);
-    if (!classGroup || !classGroup.group.admins.some((admin) => admin.toString() === req.user._id.toString())) {
+    if (
+      !classGroup ||
+      !classGroup.group.admins.some(
+        (admin) => admin.toString() === req.user._id.toString()
+      )
+    ) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -993,17 +1083,31 @@ export const updateClass = async (req, res) => {
     }
 
     // Validate updates
-    const allowedFields = ["name", "image", "classType", "fileSendingAllowed", "startTime", "cutoffTime", "checkInterval", "selectedDays"];
+    const allowedFields = [
+      "name",
+      "image",
+      "classType",
+      "fileSendingAllowed",
+      "startTime",
+      "cutoffTime",
+      "checkInterval",
+      "selectedDays",
+    ];
     const updateKeys = Object.keys(updates);
-    if (updateKeys.length === 0 || !updateKeys.every((key) => allowedFields.includes(key))) {
-      return res.status(400).json({ message: "Invalid update fields provided" });
+    if (
+      updateKeys.length === 0 ||
+      !updateKeys.every((key) => allowedFields.includes(key))
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid update fields provided" });
     }
 
     const classGroup = await Conversation.findByIdAndUpdate(
       classId,
       {
         $set: {
-          "group": {
+          group: {
             ...req.classGroup.group, // Preserve existing group fields
             ...updates, // Apply updates
           },
@@ -1022,6 +1126,83 @@ export const updateClass = async (req, res) => {
     res.json({ message: "Class updated successfully", class: classGroup });
   } catch (error) {
     console.error("Error updating class:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getClassJoinRequests = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let query = {};
+    let classes = [];
+
+    // If user is a teacher, fetch classes where they are admin/moderator
+    if (user.role === "teacher") {
+      classes = await Conversation.find({
+        "group.type": "classroom",
+        $or: [{ "group.admins": userId }, { "group.moderators": userId }],
+      }).select("_id group.name group.classType");
+      query = {
+        classId: { $in: classes.map((c) => c._id) },
+        status: "pending",
+      };
+    } else {
+      // Non-teachers can only see their own join requests (any status)
+      classes = await Conversation.find({
+        "group.type": "classroom",
+        _id: { $in: await JoinRequest.find({ userId }).distinct("classId") },
+      }).select("_id group.name group.classType");
+      query = { userId };
+    }
+
+    // Find join requests based on the query
+    const requests = await JoinRequest.find(query)
+      .populate("userId", "name email image")
+      .populate("classId", "group.name group.classType")
+      .sort({ requestedAt: -1 });
+
+    // Group requests by class
+    const groupedRequests = classes.map((classItem) => ({
+      classId: classItem._id,
+      className: classItem.group.name,
+      classType: classItem.group.classType,
+      requests: requests
+        .filter(
+          (request) =>
+            request.classId._id.toString() === classItem._id.toString()
+        )
+        .map((request) => ({
+          _id: request._id,
+          user: {
+            _id: request.userId._id,
+            name: request.userId.name,
+            email: request.userId.email,
+            image: request.userId.image,
+          },
+          status: request.status,
+          requestedAt: request.requestedAt,
+        })),
+    }));
+
+    // Filter out classes with no requests
+    const filteredGroupedRequests = groupedRequests.filter(
+      (group) => group.requests.length > 0
+    );
+
+    res.json({ classes: filteredGroupedRequests });
+  } catch (error) {
+    console.error("Error fetching class join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
