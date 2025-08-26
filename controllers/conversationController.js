@@ -35,16 +35,21 @@ const createConversation = async (req, res) => {
 // Get all conversations for the logged-in user
 const getAllConversations = async (req, res) => {
   try {
-    const { userId } = req.params; // Get logged-in user ID from request
+    const { userId } = req.params; // Logged-in user ID
 
     const conversations = await Conversation.find({ participants: userId })
       .populate("participants", "name image")
-      .sort({ updatedAt: -1 }) // <-- Sort by activity
-      .limit(30) // <-- Only fetch most recent 30
-      .lean(); // Convert Mongoose documents to plain objects
+      .sort({ updatedAt: -1 }) // sort by activity
+      .limit(30) // fetch recent 30
+      .lean();
 
-    // Format conversations to include both participants' info
     const formattedConversations = conversations.map((convo) => {
+      // Find unread count for this user
+      const unreadEntry = convo.unread_messages?.find(
+        (entry) => entry.user.toString() === userId
+      );
+      const unreadCount = unreadEntry ? unreadEntry.count : 0;
+
       if (convo.group?.is_group) {
         return {
           _id: convo._id,
@@ -52,12 +57,13 @@ const getAllConversations = async (req, res) => {
           image: convo.group.image || "images/default-group.svg",
           last_message: convo.last_message,
           is_group: true,
-          conversationType: convo.group.type || "group", //  Add this
+          conversationType: convo.group.type || "group",
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
-            image: user.image ,
+            image: user.image,
           })),
+          unreadMessages: unreadCount, 
         };
       } else {
         return {
@@ -69,9 +75,9 @@ const getAllConversations = async (req, res) => {
           participants: convo.participants.map((user) => ({
             _id: user._id,
             name: user.name,
-            image: user.image ,
+            image: user.image,
           })),
-          unreadMessages: 0,
+          unreadMessages: unreadCount, 
         };
       }
     });
@@ -82,6 +88,7 @@ const getAllConversations = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
