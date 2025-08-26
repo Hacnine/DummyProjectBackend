@@ -390,6 +390,9 @@ export const deleteConversation = async (req, res) => {
 };
 
 
+
+
+     
 export const getPendingConversations = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -399,15 +402,22 @@ export const getPendingConversations = async (req, res) => {
       return res.status(400).json({ message: "Valid User ID is required" });
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     // Find all pending one-to-one conversations for the user
     const conversations = await Conversation.find({
       participants: userId,
       status: "pending",
       "group.is_group": false,
     })
-      .populate("participants", "name email image")
-      .populate("last_message.sender", "name email image")
-      .sort({ updatedAt: -1 });
+      .populate("participants", "name image")
+      .populate("last_message.sender", "name image")
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.json({ conversations });
   } catch (error) {
@@ -416,16 +426,17 @@ export const getPendingConversations = async (req, res) => {
   }
 };
 
+// make sure you have the right import path
+
 export const getGroupJoinRequests = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // Validate userId
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: "Valid User ID is required" });
     }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select("_id");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -433,14 +444,13 @@ export const getGroupJoinRequests = async (req, res) => {
     let query = {};
     let groups = [];
 
-    // If user is an admin/moderator, fetch groups where they have privileges
+    // Admins / moderators: groups where they have privileges
     groups = await Conversation.find({
       "group.type": "group",
-      $or: [
-        { "group.admins": userId },
-        { "group.moderators": userId },
-      ],
-    }).select("_id group.name");
+      $or: [{ "group.admins": userId }, { "group.moderators": userId }],
+    })
+      .select("_id group.name")
+      .lean();
 
     if (groups.length > 0) {
       query = {
@@ -448,46 +458,120 @@ export const getGroupJoinRequests = async (req, res) => {
         status: "pending",
       };
     } else {
-      // Non-admin/moderators can only see their own join requests (any status)
+      // Non-admins/moderators: only their own pending requests
+      const myPendingClassIds = await JoinRequest.find({
+        userId,
+        status: "pending",
+      }).distinct("classId");
+
       groups = await Conversation.find({
         "group.type": "group",
-        _id: { $in: await JoinRequest.find({ userId }).distinct("classId") },
-      }).select("_id group.name");
-      query = { userId };
+        _id: { $in: myPendingClassIds },
+      })
+        .select("_id group.name group.image")
+        .lean();
+
+      query = { userId, status: "pending" };
     }
 
-    // Find join requests based on the query
+    // Fetch requests (do NOT populate userId; we’ll fetch users ourselves)
     const requests = await JoinRequest.find(query)
-      .populate("userId", "name email image")
-      .populate("classId", "group.name")
-      .sort({ requestedAt: -1 });
+      .populate("classId", "group.name") // keep group name
+      .sort({ requestedAt: -1 })
+      .lean();
+
+    // Batch-load all distinct requester userIds from User model
+    const requesterIds = [
+      ...new Set(requests.map((r) => r.userId.toString())),
+    ];
+
+    const users = await User.find({ _id: { $in: requesterIds } })
+      .select("name image") // image must exist per your model/business rule
+      .lean();
+
+    const userMap = new Map(
+      users.map((u) => [u._id.toString(), { _id: u._id, name: u.name, image: u.image }])
+    );
 
     // Group requests by group
-    const groupedRequests = groups.map((groupItem) => ({
-      groupId: groupItem._id,
-      groupName: groupItem.group.name,
-      requests: requests
-        .filter((request) => request.classId._id.toString() === groupItem._id.toString())
-        .map((request) => ({
-          _id: request._id,
+    const groupedRequests = groups.map((groupItem) => {
+      const reqsForGroup = requests.filter(
+        (r) =>
+          (r.classId?._id || r.classId).toString() === groupItem._id.toString()
+      );
+
+      const shaped = reqsForGroup.map((r) => {
+        const u = userMap.get(r.userId.toString());
+        return {
+          _id: r._id,
           user: {
-            _id: request.userId._id,
-            name: request.userId.name,
-            email: request.userId.email,
-            image: request.userId.image,
+            _id: u?._id || r.userId,
+            name: u?.name ?? "",       // from User model
+            image: u?.image ?? null,   // from User model (should be present)
           },
-          status: request.status,
-          requestedAt: request.requestedAt,
-        })),
-    }));
+          status: r.status,
+          requestedAt: r.requestedAt,
+        };
+      });
 
-    // Filter out groups with no requests
-    const filteredGroupedRequests = groupedRequests.filter((group) => group.requests.length > 0);
+      return {
+        groupId: groupItem._id,
+        groupName: groupItem.group.name,
+        requests: shaped,
+      };
+    });
 
-    res.json({ groups: filteredGroupedRequests });
+    // Remove groups with zero requests
+    let filteredGroupedRequests = groupedRequests.filter(
+      (g) => g.requests.length > 0
+    );
+
+    // Sort by latest request date within each group (desc)
+    filteredGroupedRequests.sort((a, b) => {
+      const aLatest = a.requests[0]?.requestedAt || new Date(0);
+      const bLatest = b.requests[0]?.requestedAt || new Date(0);
+      return new Date(bLatest) - new Date(aLatest);
+    });
+
+    // Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const paginated = filteredGroupedRequests.slice(skip, skip + limit);
+
+    res.json({ groups: paginated });
   } catch (error) {
     console.error("Error fetching group join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+export const approveJoinRequest = async (req, res) => {
+  try {
+    const request = await JoinRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: "Request not found" });
+
+    request.status = "approved";
+    await request.save();
+
+    res.json({ success: true, request });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const rejectJoinRequest = async (req, res) => {
+  try {
+    const request = await JoinRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: "Request not found" });
+
+    request.status = "rejected";
+    await request.save();
+
+    res.json({ success: true, request });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 

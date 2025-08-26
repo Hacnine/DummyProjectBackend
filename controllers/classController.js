@@ -1130,6 +1130,7 @@ export const updateClass = async (req, res) => {
   }
 };
 
+
 export const getClassJoinRequests = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -1158,17 +1159,17 @@ export const getClassJoinRequests = async (req, res) => {
         status: "pending",
       };
     } else {
-      // Non-teachers can only see their own join requests (any status)
+      // Non-teachers can only see their own pending join requests
       classes = await Conversation.find({
         "group.type": "classroom",
-        _id: { $in: await JoinRequest.find({ userId }).distinct("classId") },
+        _id: { $in: await JoinRequest.find({ userId, status: "pending" }).distinct("classId") },
       }).select("_id group.name group.classType");
-      query = { userId };
+      query = { userId, status: "pending" };
     }
 
     // Find join requests based on the query
     const requests = await JoinRequest.find(query)
-      .populate("userId", "name email image")
+      .populate("userId", "name image")
       .populate("classId", "group.name group.classType")
       .sort({ requestedAt: -1 });
 
@@ -1187,7 +1188,6 @@ export const getClassJoinRequests = async (req, res) => {
           user: {
             _id: request.userId._id,
             name: request.userId.name,
-            email: request.userId.email,
             image: request.userId.image,
           },
           status: request.status,
@@ -1196,11 +1196,24 @@ export const getClassJoinRequests = async (req, res) => {
     }));
 
     // Filter out classes with no requests
-    const filteredGroupedRequests = groupedRequests.filter(
+    let filteredGroupedRequests = groupedRequests.filter(
       (group) => group.requests.length > 0
     );
 
-    res.json({ classes: filteredGroupedRequests });
+    // Sort by the latest request date
+    filteredGroupedRequests.sort((a, b) => {
+      const aLatest = a.requests[0]?.requestedAt || new Date(0);
+      const bLatest = b.requests[0]?.requestedAt || new Date(0);
+      return new Date(bLatest) - new Date(aLatest);
+    });
+
+    // Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const paginatedRequests = filteredGroupedRequests.slice(skip, skip + limit);
+
+    res.json({ classes: paginatedRequests });
   } catch (error) {
     console.error("Error fetching class join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });
