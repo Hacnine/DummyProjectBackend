@@ -2,6 +2,7 @@ import express from 'express';
 import Post from '../models/postModel.js';
 import { Friendship } from '../models/friendshipModel.js';
 import { isLogin } from '../middlewares/auth.middleware.js';
+import { FriendList } from '../models/friendListModel.js';
 
 const router = express.Router();
 
@@ -112,24 +113,39 @@ router.post('/posts/:postId/comments/:commentId/replies', isLogin, async (req, r
 // Get Posts (Filtered by Friends)
 router.get('/posts', isLogin, async (req, res) => {
   try {
-    // Get accepted friends
-    const friendships = await Friendship.find({
-      $or: [
-        { requester: req.user._id, status: 'accepted' },
-        { recipient: req.user._id, status: 'accepted' },
-      ],
-    });
-    const friendIds = friendships.map((f) =>
-      f.requester.toString() === req.user._id.toString() ? f.recipient : f.requester
-    );
+    // Get pagination parameters from query, with defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const skip = (page - 1) * limit;
+
+    // Get user's friend list
+    const friendList = await FriendList.findOne({ user: req.user._id }).select('friends');
+    const friendIds = friendList ? friendList.friends : [];
+    
     // Include user's own posts
     friendIds.push(req.user._id);
-    // Fetch posts from friends and self
+    
+    // Fetch posts from friends and self with pagination
     const posts = await Post.find({ user: { $in: friendIds } })
       .populate('user', 'name')
       .populate('comments.user', 'name')
-      .sort({ createdAt: -1 });
-    res.json(posts);
+      .populate('comments.replies.user', 'name') // Populate user in replies
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    // Get total count for pagination metadata
+    const totalPosts = await Post.countDocuments({ user: { $in: friendIds } });
+    
+    res.json({
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalPosts / limit),
+        totalPosts,
+        limit
+      }
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { approveJoinRequest, createConversation, createGroup, deleteConversation, getAllConversations, getConversationById, getGroupJoinRequests, getPendingConversations, rejectJoinRequest, searchGroups, updateConversationThemeIndex, updateMessageRequestStatus  } from '../controllers/conversationController.js';
+import { acceptMessageRequest, approveJoinRequest, createConversation, createGroup, deleteConversation, getAllConversations, getConversationById, getGroupJoinRequests, getPendingConversations, rejectJoinRequest, searchGroups, updateConversationThemeIndex  } from '../controllers/conversationController.js';
 import { isLogin } from "../middlewares/auth.middleware.js";
 import { getClassJoinRequests } from '../controllers/classController.js';
 
@@ -11,7 +11,7 @@ router.post('/create-group', createGroup);
 router.get('/chat/:chatId', getConversationById);
 router.get('/search-groups', searchGroups);
 
-router.patch("/update-message-request-status/:conversationId", updateMessageRequestStatus);
+router.patch("/update-message-request-status/:conversationId", acceptMessageRequest);
 router.patch("/:id/theme-index", updateConversationThemeIndex);
 router.delete("/conversation/:id", deleteConversation);
 

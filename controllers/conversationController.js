@@ -1,8 +1,9 @@
-import { Friendship } from "../models/friendship.js";
-import { Conversation } from "../models/conversation.js";
+import Conversation from "../models/conversationModel.js";
+import JoinRequest from "../models/joinRequestModel.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
+import { FriendList } from "../models/friendListModel.js";
 
 export const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
@@ -276,21 +277,22 @@ export const acceptMessageRequest = async (req, res) => {
     conversation.status = "accepted";
     await conversation.save({ session });
 
-    // Create friendship records for both directions
+    // Update friend lists for both users
     const [userA, userB] = conversation.participants;
 
-    const friendships = [
-      { requester: userA, recipient: userB, status: "accepted" },
-      { requester: userB, recipient: userA, status: "accepted" },
-    ];
+    // Add userB to userA's friend list
+    await FriendList.updateOne(
+      { user: userA },
+      { $addToSet: { friends: userB } },
+      { upsert: true, session }
+    );
 
-    for (const friendship of friendships) {
-      await Friendship.updateOne(
-        { requester: friendship.requester, recipient: friendship.recipient },
-        { $set: { status: "accepted" } },
-        { upsert: true, session }
-      );
-    }
+    // Add userA to userB's friend list
+    await FriendList.updateOne(
+      { user: userB },
+      { $addToSet: { friends: userA } },
+      { upsert: true, session }
+    );
 
     // Commit the transaction
     await session.commitTransaction();
@@ -314,7 +316,6 @@ export const acceptMessageRequest = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 export const updateConversationThemeIndex = async (req, res) => {
   try {
