@@ -5,6 +5,7 @@ import { registerOnlineUserHandlers } from "./onlineUserSocket.js";
 import { registerChatHandlers } from "./chatSocket.js";
 import registerAlertnessHandlers from "./alertnessSocket.js";
 import { registerConversationActiveUsersHandlers } from "./conversationActiveUsers.js";
+import { registerConversationHandlers } from "./conversationSocket.js";
 
 export const initSocketServer = (server) => {
   const io = new Server(server, {
@@ -29,6 +30,7 @@ export const initSocketServer = (server) => {
   });
 
   io.on("connection", (socket) => {
+    registerConversationHandlers(io, socket);
     registerOnlineUserHandlers(io, socket);
     registerConversationActiveUsersHandlers(io, socket);
     registerChatHandlers(io, socket);

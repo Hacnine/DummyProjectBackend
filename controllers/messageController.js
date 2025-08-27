@@ -14,6 +14,7 @@ import {
   validateAndBuildQuery,
 } from "../utils/controller-utils/messageControllerUtils.js";
 import mongoose from "mongoose";
+import { emitConversationUpdate } from "../sockets/conversationSocket.js";
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
@@ -226,6 +227,7 @@ export const sendTextMessage = async ({
       message: responseMessage,
       conversationId: resolvedConversationId,
     });
+    emitConversationUpdate(io, conversationId);
 
     return {
       success: true,
@@ -573,7 +575,7 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
       io.to(conversationId).emit("messagesRead", {
         conversationId,
         userId,
-        messages: updatedMessages.map(msg => msg.toObject()),
+        messages: updatedMessages.map((msg) => msg.toObject()),
       });
     } else {
       // No valid messages to mark as read

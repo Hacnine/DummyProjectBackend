@@ -96,5 +96,16 @@ conversationSchema.index({ visibility: 1 });
 conversationSchema.index({ "group.type": 1 });
 conversationSchema.index({ participants: 1, updatedAt: -1 });
 
+conversationSchema.pre("save", function (next) {
+  if (
+    this.group &&
+    this.group.type === "group" &&
+    (!this.group.image || this.group.image === "/images/cover/default-cover.jpg")
+  ) {
+    this.group.image = "/images/cover/default-group.png";
+  }
+  next();
+});
+
 const Conversation = mongoose.model("Conversation", conversationSchema);
 export default Conversation;

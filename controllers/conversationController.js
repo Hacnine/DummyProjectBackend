@@ -2,8 +2,9 @@ import Conversation from "../models/conversationModel.js";
 import JoinRequest from "../models/joinRequestModel.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
+import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
 
-const createConversation = async (req, res) => {
+export const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
   try {
     // Check if a conversation already exists between the two users
@@ -33,7 +34,7 @@ const createConversation = async (req, res) => {
 };
 
 // Get all conversations for the logged-in user
-const getAllConversations = async (req, res) => {
+export const getAllConversations = async (req, res) => {
   try {
     const { userId } = req.params; // Logged-in user ID
 
@@ -43,44 +44,9 @@ const getAllConversations = async (req, res) => {
       .limit(30) // fetch recent 30
       .lean();
 
-    const formattedConversations = conversations.map((convo) => {
-      // Find unread count for this user
-      const unreadEntry = convo.unread_messages?.find(
-        (entry) => entry.user.toString() === userId
-      );
-      const unreadCount = unreadEntry ? unreadEntry.count : 0;
-
-      if (convo.group?.is_group) {
-        return {
-          _id: convo._id,
-          name: convo.group.name,
-          image: convo.group.image || "images/default-group.svg",
-          last_message: convo.last_message,
-          is_group: true,
-          conversationType: convo.group.type || "group",
-          participants: convo.participants.map((user) => ({
-            _id: user._id,
-            name: user.name,
-            image: user.image,
-          })),
-          unreadMessages: unreadCount, 
-        };
-      } else {
-        return {
-          _id: convo._id,
-          status: convo.status,
-          last_message: convo.last_message,
-          is_group: false,
-          conversationType: "one to one",
-          participants: convo.participants.map((user) => ({
-            _id: user._id,
-            name: user.name,
-            image: user.image,
-          })),
-          unreadMessages: unreadCount, 
-        };
-      }
-    });
+    const formattedConversations = conversations.map((convo) =>
+      formatConversation(convo, userId)
+    );
 
     res.json(formattedConversations);
   } catch (error) {
@@ -227,7 +193,7 @@ export const createGroup = async (req, res) => {
   }
 };
 
-const getConversationById = async (req, res) => {
+export const getConversationById = async (req, res) => {
   const { chatId } = req.params;
   const { userId } = req.query;
 
@@ -281,7 +247,7 @@ const getConversationById = async (req, res) => {
   }
 };
 
-const updateMessageRequestStatus = async (req, res) => {
+export const updateMessageRequestStatus = async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { status } = req.body; // "pending", "accepted", or "rejected"
@@ -580,11 +546,4 @@ export const rejectJoinRequest = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-};
-
-export {
-  createConversation,
-  getAllConversations,
-  getConversationById,
-  updateMessageRequestStatus,
 };
