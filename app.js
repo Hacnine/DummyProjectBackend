@@ -22,6 +22,8 @@ import attendanceRoutes from "./routes/attendanceRoutes.js";
 import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
+import socialRoutes from "./routes/socialRoutes.js";
+
 import { startCronJobs } from "./schedulers/sessionCreationJob.js"; 
 import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletionJob.js';
 import upload from './middlewares/multerConfig.js';
@@ -108,6 +110,8 @@ app.use("/class-group/files", fileRoutes);
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
+// Social Media
+app.use("/social", attachIo, socialRoutes); 
 
 // Connect to DB and start server
 connectDB(DATABASE_URL)
