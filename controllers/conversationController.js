@@ -1,5 +1,5 @@
-import Conversation from "../models/conversationModel.js";
-import JoinRequest from "../models/joinRequestModel.js";
+import { Friendship } from "../models/friendship.js";
+import { Conversation } from "../models/conversation.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
@@ -247,75 +247,74 @@ export const getConversationById = async (req, res) => {
   }
 };
 
-export const updateMessageRequestStatus = async (req, res) => {
+
+export const acceptMessageRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { conversationId } = req.params;
-    const { status } = req.body; // "pending", "accepted", or "rejected"
-    // Validate status
-    const validStatuses = ["pending", "accepted", "rejected"];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
-    }
 
     // Find the conversation
-    const conversation = await Conversation.findById(conversationId);
+    const conversation = await Conversation.findById(conversationId).session(session);
     if (!conversation) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Prevent unnecessary updates
-    if (conversation.status === status) {
+    // Check if already accepted
+    if (conversation.status === "accepted") {
+      await session.abortTransaction();
+      session.endSession();
       return res
         .status(400)
-        .json({ message: `Message request is already ${status}` });
+        .json({ message: "Message request already accepted" });
     }
-    const statusTransitions = {
-      rejected: ["pending", "accepted"], //  Allow moving directly to "accepted"
-      pending: ["accepted", "rejected"],
-      accepted: [], // No further transitions after "accepted"
-    };
-
-    if (!statusTransitions[conversation.status]?.includes(status)) {
-      return res.status(400).json({ message: "Invalid status transition" });
-    }
-
-    // // Business logic: Ensure valid transitions
-    // const statusTransitions = {
-    //   rejected: ["pending"], // Can only move to "pending", not "accepted" directly
-    //   pending: ["accepted", "rejected"], // Can move to "accepted" or "rejected"
-    // };
-
-    // if (!statusTransitions[conversation.status]?.includes(status)) {
-    //   return res.status(400).json({ message: "Invalid status transition" });
-    // }
 
     // Update status
-    conversation.status = status;
-    await conversation.save();
+    conversation.status = "accepted";
+    await conversation.save({ session });
 
-    // Determine event name
-    const eventMapping = {
-      pending: "messageRequestPending",
-      accepted: "messageRequestAccepted",
-      rejected: "messageRequestRejected",
-    };
+    // Create friendship records for both directions
+    const [userA, userB] = conversation.participants;
 
-    // Notify participants
+    const friendships = [
+      { requester: userA, recipient: userB, status: "accepted" },
+      { requester: userB, recipient: userA, status: "accepted" },
+    ];
+
+    for (const friendship of friendships) {
+      await Friendship.updateOne(
+        { requester: friendship.requester, recipient: friendship.recipient },
+        { $set: { status: "accepted" } },
+        { upsert: true, session }
+      );
+    }
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Notify participants after commit
     conversation.participants.forEach((participant) => {
-      req.io.to(participant.toString()).emit(eventMapping[status], {
+      req.io.to(participant.toString()).emit("messageRequestAccepted", {
         conversationId: conversation._id,
-        message: `Message request ${status}`,
+        message: `Message request accepted`,
       });
     });
 
     res
       .status(200)
-      .json({ message: `Message request ${status}`, conversation });
+      .json({ message: "Message request accepted", conversation });
   } catch (error) {
-    console.error("Error updating message request status:", error);
+    console.error("Error accepting message request:", error);
+    await session.abortTransaction();
+    session.endSession();
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 export const updateConversationThemeIndex = async (req, res) => {
   try {
