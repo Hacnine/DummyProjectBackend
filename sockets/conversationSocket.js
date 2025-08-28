@@ -1,21 +1,67 @@
+// conversationHandlers.js
 import mongoose from "mongoose";
 import Conversation from "../models/conversationModel.js";
+import UnreadCount from "../models/unreadCountModel.js";
 import User from "../models/userModel.js";
 import JoinRequest from "../models/joinRequestModel.js";
 import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
+import { incrementUnreadRequest, resetUnreadRequests } from "../utils/controller-utils/unreadCountUtils.js";
 
-// registerConversationHandlers will be called inside initSocketServer
 export const registerConversationHandlers = (io, socket) => {
   console.log("Conversation socket registered for:", socket.user.id);
 
-  // Join the user's personal room (so we can target updates to them)
   socket.on("join_conversations_room", () => {
     socket.join(`user_${socket.user.id}`);
     console.log(`User ${socket.user.id} joined room: user_${socket.user.id}`);
   });
+
+  // Reset specific request type dynamically
+  socket.on("reset_unread_request", async (type) => {
+    try {
+      const updated = await resetUnreadRequests(socket.user.id, type);
+      io.to(`user_${socket.user.id}`).emit("unread_counts_updated", updated);
+    } catch (err) {
+      console.error(`Error resetting unread ${type} requests:`, err);
+    }
+  });
+
+  // Reset unread messages for a conversation
+  socket.on("reset_unread_messages", async (conversationId) => {
+    try {
+      const unread = await UnreadCount.findOne({ user: socket.user.id });
+
+      if (!unread) return;
+
+      unread.unreadMessages = unread.unreadMessages.map((entry) =>
+        entry.conversation.toString() === conversationId.toString()
+          ? { ...entry.toObject(), count: 0 }
+          : entry
+      );
+
+      await unread.save();
+
+      io.to(`user_${socket.user.id}`).emit("unread_messages_reset", {
+        conversationId,
+        unreadCount: 0,
+      });
+    } catch (err) {
+      console.error("Error resetting unread messages:", err);
+    }
+  });
 };
 
-// Utility function to emit updated conversation to all participants
+export const incrementUnreadRequestAndEmit = async (io, userId, type) => {
+  const updatedCounts = await incrementUnreadRequest(userId, type);
+
+  io.to(`user_${userId}`).emit("unread_counts_updated", updatedCounts);
+
+  return updatedCounts;
+};
+
+
+/**
+ * Utility function to emit updated conversation to all participants
+ */
 export const emitConversationUpdate = async (io, conversationId) => {
   try {
     const convo = await Conversation.findById(conversationId)
@@ -28,13 +74,19 @@ export const emitConversationUpdate = async (io, conversationId) => {
     }
 
     // Emit to each participant's room with user-specific unread count
-    convo.participants.forEach((user) => {
+    for (const user of convo.participants) {
       const formattedConversation = formatConversation(convo, user._id);
 
-      // Emit to this user's room
-      io.to(`user_${user._id}`).emit("conversation_updated", formattedConversation);
-      console.log(`Emitted to user_${user._id} for convo ${conversationId}:`, formattedConversation);
-    });
+      io.to(`user_${user._id}`).emit(
+        "conversation_updated",
+        formattedConversation
+      );
+
+      console.log(
+        `Emitted to user_${user._id} for convo ${conversationId}:`,
+        formattedConversation
+      );
+    }
   } catch (err) {
     console.error("Error emitting conversation update:", err);
   }

@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import Conversation from "../../models/conversationModel.js";
 import Message from "../../models/messageModel.js";
+import { incrementUnreadRequestAndEmit } from "../../sockets/conversationSocket.js";
+import { io } from "../../app.js";
 
 // Helper to validate ObjectId
 export const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -32,6 +34,8 @@ export const findOrCreateConversation = async (userId, receiverId, conversationI
         visibility: "private",
         group: { is_group: false },
       });
+           // Increase unreadFriendRequestCount for the receiver
+      await incrementUnreadRequestAndEmit(io, receiverId, "friend");
     }
   } else {
     if (!isValidObjectId(conversationId)) {

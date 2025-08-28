@@ -4,6 +4,7 @@ import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
 import { FriendList } from "../models/friendListModel.js";
+import UnreadCount from "../models/unreadCountModel.js";
 
 export const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
@@ -249,6 +250,37 @@ export const getConversationById = async (req, res) => {
 };
 
 
+export const getUnreadRequestCounts = async (req, res) => {
+  const  userId = req.user._id
+  try {
+    // Validate input
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Find the unread count document for the user
+    const unreadCount = await UnreadCount.findOne({ user: userId })
+      .select('unreadFriendRequestCount unreadGroupRequestCount unreadClassRequestCount')
+      .lean();
+
+    // if (!unreadCount) {
+    //   return res.status(404).json({ message: 'Unread counts not found for this user' });
+    // }
+
+    // Return only the requested fields
+    const response = {
+      unreadFriendRequestCount: unreadCount.unreadFriendRequestCount,
+      unreadGroupRequestCount: unreadCount.unreadGroupRequestCount,
+      unreadClassRequestCount: unreadCount.unreadClassRequestCount,
+    };
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error fetching unread counts:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export const acceptMessageRequest = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -258,6 +290,7 @@ export const acceptMessageRequest = async (req, res) => {
 
     // Find the conversation
     const conversation = await Conversation.findById(conversationId).session(session);
+    console.log(conversation)
     if (!conversation) {
       await session.abortTransaction();
       session.endSession();
@@ -362,11 +395,7 @@ export const deleteConversation = async (req, res) => {
   }
 };
 
-
-
-
-     
-export const getPendingConversations = async (req, res) => {
+export const getPendingConversationRequests = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -387,17 +416,43 @@ export const getPendingConversations = async (req, res) => {
       "group.is_group": false,
     })
       .populate("participants", "name image")
-      .populate("last_message.sender", "name image")
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    res.json({ conversations });
+    // Process conversations to return required fields
+    const formattedConversations = conversations.map((conversation) => {
+      // Find the other participant (not the requesting user)
+      const otherParticipant = conversation.participants.find(
+        (participant) => participant._id.toString() !== userId.toString()
+      );
+
+      // Check if the requestor (userId) is at index 0
+      const isRequestor = conversation.participants[0]._id.toString() === userId.toString();
+
+      // Base response object
+      const response = {
+        conversationId: conversation._id,
+        name: otherParticipant ? otherParticipant.name : null,
+        image: otherParticipant ? otherParticipant.image : null,
+      };
+
+      // Include status only if the user is the requestor (at index 0)
+      if (isRequestor) {
+        response.status = conversation.status;
+      }
+
+      return response;
+    });
+
+    res.json({ conversations: formattedConversations });
   } catch (error) {
     console.error("Error fetching pending conversations:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+export default Conversation;
 
 // make sure you have the right import path
 

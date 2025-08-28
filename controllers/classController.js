@@ -8,6 +8,9 @@ import { isValidTimeFormat } from "../utils/timeformatValidation.js";
 import moment from "moment";
 import mongoose from "mongoose";
 import { scheduleSessionCronForClass } from "../schedulers/sessionCreationJob.js";
+import { incrementUnreadRequest } from "../utils/controller-utils/unreadCountUtils.js";
+import { incrementUnreadRequestAndEmit } from "../sockets/conversationSocket.js";
+import { io } from "../app.js";
 
 export const createClass = async (req, res) => {
   try {
@@ -335,6 +338,15 @@ export const requestJoinClass = async (req, res) => {
     //     request: joinRequest,
     //   });
     // });
+
+    //  Increment unreadFriendRequestCount for all admins
+    if (conversation.group.admins?.length > 0) {
+      await Promise.all(
+        conversation.group.admins.map((adminId) =>
+          incrementUnreadRequestAndEmit(io, adminId, conversation.group.type)
+        )
+      );
+    }
 
     res.json({
       message: "Join request sent successfully",
@@ -683,7 +695,8 @@ export const searchClasses = async (req, res) => {
     //   }
     // }
 
-    const finalCriteria = searchCriteria.length > 0 ? { $or: searchCriteria } : {};
+    const finalCriteria =
+      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
 
     const total = await Conversation.countDocuments(finalCriteria);
 
@@ -1130,7 +1143,6 @@ export const updateClass = async (req, res) => {
   }
 };
 
-
 export const getClassJoinRequests = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -1162,7 +1174,11 @@ export const getClassJoinRequests = async (req, res) => {
       // Non-teachers can only see their own pending join requests
       classes = await Conversation.find({
         "group.type": "classroom",
-        _id: { $in: await JoinRequest.find({ userId, status: "pending" }).distinct("classId") },
+        _id: {
+          $in: await JoinRequest.find({ userId, status: "pending" }).distinct(
+            "classId"
+          ),
+        },
       }).select("_id group.name group.classType");
       query = { userId, status: "pending" };
     }
