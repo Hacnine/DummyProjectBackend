@@ -1,6 +1,27 @@
-import 'esm-module-alias';
+import "dotenv/config";
 import express from "express";
+import http from "http";
+import path from "path";
+import { fileURLToPath } from "url";
+import cors from "cors";
 import cookieParser from "cookie-parser";
+import compression from "compression";
+import session from "express-session";
+import { RedisStore } from "connect-redis";
+import pinoHttp from "pino-http";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+
+// Config & utils
+import { connectDB } from "./db/connectdb.js";
+import { connectRedis } from "./config/redisClient.js";
+import logger from "./utils/logger.js";
+import messageCleanupJob from "./schedulers/messageCleanupJob.js";
+import { startCronJobs } from "./schedulers/sessionCreationJob.js";
+import { startCronJobsForScheduledDeletion } from "./schedulers/scheduledDeletionJob.js";
+import { initialSocketServer } from "./sockets/socketindex.js";
+
+// Routes
 import userRouter from "./routes/userRoute.js";
 import conversationRouter from "./routes/conversationRoute.js";
 import messageRouter from "./routes/messageRoute.js";
@@ -8,14 +29,6 @@ import quickMessageRouter from "./routes/quickMessageRoute.js";
 import quickLessonRouter from "./routes/quickLessonRoute.js";
 import adminRouter from "./routes/adminRoutes.js";
 import adminUserRouter from "./routes/adminUserRoutes.js";
-import connectDB from "./db/connectdb.js";
-import cors from "cors";
-import http from "http";
-import dotenv from "dotenv";
-import session from "express-session";
-import { RedisStore } from "connect-redis";
-import { createClient } from "redis";
-// import apiRouter from "./routes/index.js";
 import classRoutes from "./routes/classRoutes.js";
 import assignmentRoutes from "./routes/assignmentRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
@@ -23,105 +36,124 @@ import alertnessRoutes from "./routes/alertnessRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import fileRoutes from "./routes/fileRoutes.js";
 import socialRoutes from "./routes/socialRoutes.js";
+import { apiLimiter } from "./middlewares/rateLimiter.js";
 
-import { startCronJobs } from "./schedulers/sessionCreationJob.js"; 
-import { startCronJobsForScheduledDeletion } from './schedulers/scheduledDeletionJob.js';
-import upload from './middlewares/multerConfig.js';
-import path from 'path';
-import messageCleanupJob from './schedulers/messageCleanupJob.js';
-import { initSocketServer } from './sockets/socketindex.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-dotenv.config();
-
-// Initialize Redis client.
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
-});
-redisClient.on("error", (err) => console.error("Redis Client Error", err));
-
-redisClient.connect().catch(console.error);
-
-// Initialize Redis store for sessions.
-const redisStore = new RedisStore({
-  client: redisClient,
-  prefix: "alfajr:", // Customize prefix for your application
-});
-
-// Initialize app
 const app = express();
-const port = process.env.PORT || "3001";
-const DATABASE_URL = process.env.DATABASE_URL;
-const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
+let io; // Declare io for export
 
-// Middleware configurations
-app.use(
-  cors({
-    origin: originUrl,
-    credentials: true,
-  })
-);
-app.use("/images", express.static("public/images"));
-app.use(express.json());
-app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
+(async () => {
+  try {
+    const port = process.env.PORT || 3001;
+    const DATABASE_URL = process.env.DATABASE_URL;
 
-// Configure express-session AFTER cookieParser
-app.use(
-  session({
-    store: redisStore, // Use custom Redis session store
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      sameSite: "None",
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    },
-  })
-);
+    // Connect DB & Redis
+    await connectDB(DATABASE_URL);
+    const redis = await connectRedis();
 
-// Create HTTP server
-const server = http.createServer(app);
+    // Core middlewares
+    // app.use(pinoHttp({ logger }));
+    app.use(helmet());
+    app.use(compression());
 
-// Initialize Socket.IO with your modular handlers
-export const io = initSocketServer(server);
+    const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
+    app.use(cors({ origin: originUrl, credentials: true }));
 
-// Attach io instance to req for routes
-const attachIo = (req, res, next) => {
-  req.io = io;
-  next();
-};
+    app.use("/images", express.static(path.join(process.cwd(), "public/images")));
+    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-app.use("/user", attachIo, userRouter);
-app.use("/conversations", attachIo, conversationRouter);
-app.use("/messages", attachIo, messageRouter);
-app.use("/quick-messages", attachIo, quickMessageRouter);
-app.use("/quick-lessons", quickLessonRouter);
-app.use("/admin", adminRouter);
-app.use("/admin/user-management", adminUserRouter);
+    app.use(express.json({ limit: "10mb" }));
+    app.use(express.urlencoded({ extended: true }));
+    app.use(cookieParser());
 
-app.use("/class-group/classes", classRoutes);
-app.use("/class-group/assignments", assignmentRoutes);
-app.use("/class-group/attendance", attendanceRoutes);
-app.use("/class-group/alertness", alertnessRoutes);
-app.use("/class-group/notification", notificationRoutes);
-app.use("/class-group/files", fileRoutes);
+    // Sessions (Redis)
+    app.use(
+      session({
+        store: new RedisStore({ client: redis, prefix: "alfajr:sess:" }),
+        secret: process.env.SESSION_SECRET,
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: process.env.NODE_ENV === "production",
+          httpOnly: true,
+          sameSite: "none",
+          maxAge: 24 * 60 * 60 * 1000,
+        },
+        name: "sid",
+      })
+    );
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+    // Socket.IO
+    const server = http.createServer(app);
+    io = await initialSocketServer(server, redis);
 
-// Social Media
-app.use("/social", attachIo, socialRoutes); 
+    // Attach io to requests
+    const attachIo = (req, _res, next) => {
+      req.io = io;
+      next();
+    };
 
-// Connect to DB and start server
-connectDB(DATABASE_URL)
-  .then(() => {
+    // Routes
+    app.use("/user", apiLimiter, attachIo, userRouter);
+    app.use("/conversations", apiLimiter, attachIo, conversationRouter);
+    app.use("/messages", apiLimiter, attachIo, messageRouter);
+    app.use("/quick-messages", apiLimiter, attachIo, quickMessageRouter);
+    app.use("/quick-lessons", apiLimiter, quickLessonRouter);
+    app.use("/admin", apiLimiter, adminRouter);
+    app.use("/admin/user-management", apiLimiter, adminUserRouter);
+    app.use("/class-group/classes", apiLimiter, classRoutes);
+    app.use("/class-group/assignments", apiLimiter, assignmentRoutes);
+    app.use("/class-group/attendance", apiLimiter, attendanceRoutes);
+    app.use("/class-group/alertness", apiLimiter, alertnessRoutes);
+    app.use("/class-group/notification", apiLimiter, notificationRoutes);
+    app.use("/class-group/files", apiLimiter, fileRoutes);
+    app.use("/social", apiLimiter, attachIo, socialRoutes);
+
+    // Health check
+    app.get("/health", (req, res) => res.status(200).send("OK"));
+
+    // 404
+    app.use((req, res) =>
+      res.status(404).json({ success: false, message: "Route not found" })
+    );
+
+    // Error handler
+    app.use((err, req, res, next) => {
+      logger.error({ err, url: req.originalUrl }, "Unhandled error");
+      res
+        .status(err.status || 500)
+        .json({ success: false, message: err.message || "Server Error" });
+    });
+
+    // Start schedulers
     messageCleanupJob.start();
     startCronJobs();
     startCronJobsForScheduledDeletion();
-    server.listen(port, () => console.log(`Server running on port ${port}`));
-  })
-  .catch((err) => {
-    console.error("Failed to connect to the database:", err);
-    process.exit(1); // Exit the process with a failure code
-  });
+
+    // Start server
+    server.listen(port, () => logger.info(`Server running on port ${port}`));
+
+    // Graceful shutdown
+    const shutdown = (signal) => async () => {
+      logger.info(`${signal} received, shutting down gracefully...`);
+      server.close(() => {
+        logger.info("HTTP server closed");
+        process.exit(0);
+      });
+      setTimeout(() => {
+        logger.error("Force exiting after 10s");
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on("SIGINT", shutdown("SIGINT"));
+    process.on("SIGTERM", shutdown("SIGTERM"));
+  } catch (err) {
+    logger.error({ err }, "Fatal boot error");
+    process.exit(1);
+  }
+})();
+
+export { app, io };

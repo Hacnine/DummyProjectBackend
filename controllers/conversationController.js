@@ -251,7 +251,7 @@ export const getConversationById = async (req, res) => {
 
 
 export const getUnreadRequestCounts = async (req, res) => {
-  const  userId = req.user._id
+  const userId = req.user._id;
   try {
     // Validate input
     if (!userId) {
@@ -259,19 +259,26 @@ export const getUnreadRequestCounts = async (req, res) => {
     }
 
     // Find the unread count document for the user
-    const unreadCount = await UnreadCount.findOne({ user: userId })
+    let unreadCount = await UnreadCount.findOne({ user: userId })
       .select('unreadFriendRequestCount unreadGroupRequestCount unreadClassRequestCount')
       .lean();
 
-    // if (!unreadCount) {
-    //   return res.status(404).json({ message: 'Unread counts not found for this user' });
-    // }
+    // If no document exists, create one with default values
+    if (!unreadCount) {
+      unreadCount = await UnreadCount.create({
+        user: userId,
+        unreadFriendRequestCount: 0,
+        unreadGroupRequestCount: 0,
+        unreadClassRequestCount: 0,
+        unreadMessages: [],
+      });
+    }
 
     // Return only the requested fields
     const response = {
-      unreadFriendRequestCount: unreadCount.unreadFriendRequestCount,
-      unreadGroupRequestCount: unreadCount.unreadGroupRequestCount,
-      unreadClassRequestCount: unreadCount.unreadClassRequestCount,
+      unreadFriendRequestCount: unreadCount.unreadFriendRequestCount || 0,
+      unreadGroupRequestCount: unreadCount.unreadGroupRequestCount || 0,
+      unreadClassRequestCount: unreadCount.unreadClassRequestCount || 0,
     };
 
     return res.status(200).json(response);
