@@ -452,10 +452,6 @@ export const getPendingConversationRequests = async (req, res) => {
   }
 };
 
-export default Conversation;
-
-// make sure you have the right import path
-
 export const getGroupJoinRequests = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -477,7 +473,7 @@ export const getGroupJoinRequests = async (req, res) => {
       "group.type": "group",
       $or: [{ "group.admins": userId }, { "group.moderators": userId }],
     })
-      .select("_id group.name")
+      .select("_id group.name group.image")
       .lean();
 
     if (groups.length > 0) {
@@ -502,72 +498,101 @@ export const getGroupJoinRequests = async (req, res) => {
       query = { userId, status: "pending" };
     }
 
-    // Fetch requests (do NOT populate userId; we’ll fetch users ourselves)
+    // Fetch requests
     const requests = await JoinRequest.find(query)
-      .populate("classId", "group.name") // keep group name
+      .populate("classId", "group.name group.image")
       .sort({ requestedAt: -1 })
       .lean();
 
-    // Batch-load all distinct requester userIds from User model
-    const requesterIds = [
-      ...new Set(requests.map((r) => r.userId.toString())),
-    ];
-
+    // Batch-load all distinct requester userIds
+    const requesterIds = [...new Set(requests.map((r) => r.userId.toString()))];
     const users = await User.find({ _id: { $in: requesterIds } })
-      .select("name image") // image must exist per your model/business rule
+      .select("name image")
       .lean();
 
     const userMap = new Map(
       users.map((u) => [u._id.toString(), { _id: u._id, name: u.name, image: u.image }])
     );
 
-    // Group requests by group
-    const groupedRequests = groups.map((groupItem) => {
-      const reqsForGroup = requests.filter(
-        (r) =>
-          (r.classId?._id || r.classId).toString() === groupItem._id.toString()
-      );
+    // Group requests by group for initial mapping
+    const groupMap = {};
+    requests.forEach((request) => {
+      const groupId = (request.classId?._id || request.classId).toString();
+      const group = groups.find((g) => g._id.toString() === groupId);
+      if (!group) return;
 
-      const shaped = reqsForGroup.map((r) => {
-        const u = userMap.get(r.userId.toString());
-        return {
-          _id: r._id,
-          user: {
-            _id: u?._id || r.userId,
-            name: u?.name ?? "",       // from User model
-            image: u?.image ?? null,   // from User model (should be present)
-          },
-          status: r.status,
-          requestedAt: r.requestedAt,
+      if (!groupMap[groupId]) {
+        groupMap[groupId] = {
+          groupId: group._id,
+          groupName: group.group.name,
+          groupImage: group.group.image || null,
+          requests: [],
         };
+      }
+      const user = userMap.get(request.userId.toString());
+      groupMap[groupId].requests.push({
+        _id: request._id,
+        user: {
+          _id: user?._id || request.userId,
+          name: user?.name ?? "",
+          image: user?.image ?? null,
+        },
+        status: request.status,
+        requestedAt: request.requestedAt,
       });
-
-      return {
-        groupId: groupItem._id,
-        groupName: groupItem.group.name,
-        requests: shaped,
-      };
     });
 
-    // Remove groups with zero requests
-    let filteredGroupedRequests = groupedRequests.filter(
-      (g) => g.requests.length > 0
-    );
-
-    // Sort by latest request date within each group (desc)
-    filteredGroupedRequests.sort((a, b) => {
+    // Convert groupMap to array and sort by latest request date
+    let groupedRequests = Object.values(groupMap).filter((g) => g.requests.length > 0);
+    groupedRequests.sort((a, b) => {
       const aLatest = a.requests[0]?.requestedAt || new Date(0);
       const bLatest = b.requests[0]?.requestedAt || new Date(0);
       return new Date(bLatest) - new Date(aLatest);
     });
 
-    // Pagination
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const paginated = filteredGroupedRequests.slice(skip, skip + limit);
+    // Flatten requests for pagination
+    const flattenedRequests = [];
+    groupedRequests.forEach((groupItem) => {
+      groupItem.requests.forEach((request) => {
+        flattenedRequests.push({
+          groupId: groupItem.groupId,
+          groupName: groupItem.groupName,
+          groupImage: groupItem.groupImage,
+          request,
+        });
+      });
+    });
 
-    res.json({ groups: paginated });
+    // Pagination: aim for 15 requests
+    const page = parseInt(req.query.page) || 1;
+    const limit = 15; // Fixed to 15 as per requirement
+    const skip = (page - 1) * limit;
+    const paginatedFlattenedRequests = flattenedRequests.slice(skip, skip + limit);
+
+    // Re-group requests by group
+    const result = [];
+    const seenGroupIds = new Set();
+    paginatedFlattenedRequests.forEach(({ groupId, groupName, groupImage, request }) => {
+      const groupIdStr = groupId.toString();
+      if (!seenGroupIds.has(groupIdStr)) {
+        seenGroupIds.add(groupIdStr);
+        result.push({
+          groupId,
+          groupName,
+          groupImage,
+          requests: [],
+        });
+      }
+      const groupItem = result.find((item) => item.groupId.toString() === groupIdStr);
+      groupItem.requests.push(request);
+    });
+
+    res.json({
+      groups: result,
+      totalRequests: flattenedRequests.length,
+      page,
+      limit,
+    });
   } catch (error) {
     console.error("Error fetching group join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });

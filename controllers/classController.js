@@ -1158,11 +1158,10 @@ export const getClassJoinRequests = async (req, res) => {
     }
 
     let query = {};
-    let classes = [];
 
     // If user is a teacher, fetch classes where they are admin/moderator
     if (user.role === "teacher") {
-      classes = await Conversation.find({
+      const classes = await Conversation.find({
         "group.type": "classroom",
         $or: [{ "group.admins": userId }, { "group.moderators": userId }],
       }).select("_id group.name group.classType");
@@ -1172,14 +1171,6 @@ export const getClassJoinRequests = async (req, res) => {
       };
     } else {
       // Non-teachers can only see their own pending join requests
-      classes = await Conversation.find({
-        "group.type": "classroom",
-        _id: {
-          $in: await JoinRequest.find({ userId, status: "pending" }).distinct(
-            "classId"
-          ),
-        },
-      }).select("_id group.name group.classType");
       query = { userId, status: "pending" };
     }
 
@@ -1190,46 +1181,80 @@ export const getClassJoinRequests = async (req, res) => {
       .sort({ requestedAt: -1 });
 
     // Group requests by class
-    const groupedRequests = classes.map((classItem) => ({
-      classId: classItem._id,
-      className: classItem.group.name,
-      classType: classItem.group.classType,
-      requests: requests
-        .filter(
-          (request) =>
-            request.classId._id.toString() === classItem._id.toString()
-        )
-        .map((request) => ({
-          _id: request._id,
-          user: {
-            _id: request.userId._id,
-            name: request.userId.name,
-            image: request.userId.image,
-          },
-          status: request.status,
-          requestedAt: request.requestedAt,
-        })),
-    }));
+    const classMap = {};
+    requests.forEach((request) => {
+      const classId = request.classId._id.toString();
+      if (!classMap[classId]) {
+        classMap[classId] = {
+          classId: request.classId._id,
+          className: request.classId.group.name,
+          classType: request.classId.group.classType,
+          requests: [],
+        };
+      }
+      classMap[classId].requests.push({
+        _id: request._id,
+        user: {
+          _id: request.userId._id,
+          name: request.userId.name,
+          image: request.userId.image,
+        },
+        status: request.status,
+        requestedAt: request.requestedAt,
+      });
+    });
 
-    // Filter out classes with no requests
-    let filteredGroupedRequests = groupedRequests.filter(
-      (group) => group.requests.length > 0
-    );
-
-    // Sort by the latest request date
-    filteredGroupedRequests.sort((a, b) => {
+    // Convert classMap to array and sort by latest request date
+    let groupedRequests = Object.values(classMap);
+    groupedRequests.sort((a, b) => {
       const aLatest = a.requests[0]?.requestedAt || new Date(0);
       const bLatest = b.requests[0]?.requestedAt || new Date(0);
       return new Date(bLatest) - new Date(aLatest);
     });
 
-    // Pagination
+    // Flatten requests for pagination
+    const flattenedRequests = [];
+    groupedRequests.forEach((classItem) => {
+      classItem.requests.forEach((request) => {
+        flattenedRequests.push({
+          classId: classItem.classId,
+          className: classItem.className,
+          classType: classItem.classType,
+          request,
+        });
+      });
+    });
+
+    // Pagination based on requests
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const paginatedRequests = filteredGroupedRequests.slice(skip, skip + limit);
+    const paginatedFlattenedRequests = flattenedRequests.slice(skip, skip + limit);
 
-    res.json({ classes: paginatedRequests });
+    // Re-group requests by class
+    const result = [];
+    const seenClassIds = new Set();
+    paginatedFlattenedRequests.forEach(({ classId, className, classType, request }) => {
+      const classIdStr = classId.toString();
+      if (!seenClassIds.has(classIdStr)) {
+        seenClassIds.add(classIdStr);
+        result.push({
+          classId,
+          className,
+          classType,
+          requests: [],
+        });
+      }
+      const classItem = result.find((item) => item.classId.toString() === classIdStr);
+      classItem.requests.push(request);
+    });
+
+    res.json({
+      classes: result,
+      totalRequests: flattenedRequests.length,
+      page,
+      limit,
+    });
   } catch (error) {
     console.error("Error fetching class join requests:", error);
     res.status(500).json({ message: "Server error", error: error.message });
