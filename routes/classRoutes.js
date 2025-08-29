@@ -1,5 +1,5 @@
 import express from "express"
-import { requireAuth, requireTeacher, requireClassAdmin } from "../middlewares/roleMiddleware.js"
+import { requireAuth, requireTeacher, requireAdmin } from "../middlewares/roleMiddleware.js"
 import {
   createClass,
   getClassDetails,
@@ -30,29 +30,29 @@ router.use(requireAuth)
 // Public class routes (for authenticated users)
 router.post("/create", requireTeacher, createClass)
 router.get("/search-classes",searchClasses)
-router.get("/list",isLogin, getUserClasses)
+router.get("/list", getUserClasses)
 router.post("/:classId/request-join", requestJoinClass)
 router.post("/:classId/leave", leaveClass)
 
 // Class-specific routes
 router.get("/:classId", getClassDetails)
-router.put("/:classId", requireClassAdmin, updateClass)
-router.delete("/:classId", requireClassAdmin, deleteClass)
-router.get("/:classId/stats", requireClassAdmin, getClassStats)
+router.put("/:classId", requireAdmin, updateClass)
+router.delete("/:classId", requireAdmin, deleteClass)
+router.get("/:classId/stats", requireAdmin, getClassStats)
 router.get("/:classId/members", getClassMembers)
 
 // Member management routes
-router.put("/:classId/add-member", requireClassAdmin, addMember)
-router.delete("/:classId/remove-member", requireClassAdmin, removeMember)
-router.put("/:classId/add-moderator", requireClassAdmin, addModerator)
-router.put("/:classId/remove-moderator", requireClassAdmin, removeModerator)
+router.put("/:classId/add-member", requireAdmin, addMember)
+router.delete("/:classId/remove-member", requireAdmin, removeMember)
+router.put("/:classId/add-moderator", requireAdmin, addModerator)
+router.put("/:classId/remove-moderator", requireAdmin, removeModerator)
 
 // Join request routes
-router.get("/:classId/requests/", requireClassAdmin, getJoinRequests)
-router.put("/:classId/approve/:userId", requireClassAdmin, approveJoinRequest)
-router.put("/:classId/reject/:userId", requireClassAdmin, rejectJoinRequest)
+router.get("/:classId/requests/", requireAdmin, getJoinRequests)
+router.put("/:classId/approve/:userId", requireAdmin, approveJoinRequest)
+router.put("/:classId/reject/:userId", requireAdmin, rejectJoinRequest)
 
 // Settings routes
-router.put("/:classId/settings", requireClassAdmin, updateClassSettings)
+router.put("/:classId/settings", requireAdmin, updateClassSettings)
 
 export default router

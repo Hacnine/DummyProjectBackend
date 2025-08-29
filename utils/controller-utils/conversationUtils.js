@@ -7,7 +7,7 @@ export const formatConversation = (convo, userId) => {
     (entry) => entry.user.toString() === userId.toString()
   );
   const unreadCount = unreadEntry ? unreadEntry.count : 0;
-console.log("convo:", userId)
+
   if (convo.group?.is_group) {
     return {
       _id: convo._id,

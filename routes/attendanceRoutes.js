@@ -1,5 +1,5 @@
 import express from "express";
-import { requireAuth, requireClassAdmin } from "../middlewares/roleMiddleware.js";
+import { requireAuth, requireAdmin } from "../middlewares/roleMiddleware.js";
 import {
   createManualSession,
   getSessions,
@@ -22,15 +22,15 @@ const router = express.Router();
 router.use(requireAuth);
 router.get("/class/:classId", getClassAttendance);
 // Session routes
-router.post("/sessions/manual/:classId", requireClassAdmin, createManualSession);
+router.post("/sessions/manual/:classId", requireAdmin, createManualSession);
 router.post("/sessions/auto-generate", autoGenerateSessions);
 router.get("/sessions", getSessions);
 router.get("/last-session", getLastSession);
 
 // Attendance routes
 router.post("/mark", markAttendance);
-router.put("/edit/:recordId", requireClassAdmin, editAttendance);
-router.post("/bulk/:classId", requireClassAdmin, bulkUpdateAttendance);
+router.put("/edit/:recordId", requireAdmin, editAttendance);
+router.post("/bulk/:classId", requireAdmin, bulkUpdateAttendance);
 router.get("/session/:sessionId", getSessionAttendance);
 router.get("/student/:studentId", getStudentAttendance);
 router.get("/analytics/class/:classId", getAttendanceAnalytics);
