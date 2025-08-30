@@ -61,7 +61,10 @@ let io; // Declare io for export
     const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
     app.use(cors({ origin: originUrl, credentials: true }));
 
-    app.use("/images", express.static(path.join(process.cwd(), "public/images")));
+    app.use(
+      "/images",
+      express.static(path.join(process.cwd(), "public/images"))
+    );
     app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
     app.use(express.json({ limit: "10mb" }));
@@ -102,12 +105,17 @@ let io; // Declare io for export
     app.use("/quick-messages", apiLimiter, attachIo, quickMessageRouter);
     app.use("/quick-lessons", apiLimiter, quickLessonRouter);
     app.use("/admin", apiLimiter, adminRouter);
-    app.use("/admin/user-management", apiLimiter, adminUserRouter);
-    app.use("/class-group/classes", apiLimiter, classRoutes);
-    app.use("/class-group/assignments", apiLimiter, assignmentRoutes);
-    app.use("/class-group/attendance", apiLimiter, attendanceRoutes);
-    app.use("/class-group/alertness", apiLimiter, alertnessRoutes);
-    app.use("/class-group/notification", apiLimiter, notificationRoutes);
+    app.use("/admin/user-management", apiLimiter, attachIo, adminUserRouter);
+    app.use("/class-group/classes", apiLimiter, attachIo, classRoutes);
+    app.use("/class-group/assignments", apiLimiter, attachIo, assignmentRoutes);
+    app.use("/class-group/attendance", apiLimiter, attachIo, attendanceRoutes);
+    app.use("/class-group/alertness", apiLimiter, attachIo, alertnessRoutes);
+    app.use(
+      "/class-group/notification",
+      apiLimiter,
+      attachIo,
+      notificationRoutes
+    );
     app.use("/class-group/files", apiLimiter, fileRoutes);
     app.use("/social", apiLimiter, attachIo, socialRoutes);
 
