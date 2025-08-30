@@ -380,8 +380,8 @@ export const getJoinRequests = async (req, res) => {
 
 export const approveJoinRequest = async (req, res) => {
   try {
-    const { classId, userId } = req.params;
-
+    const { classId } = req.params;
+    const userId = req.user._id.toString();
     // Validate inputs
     if (
       !mongoose.isValidObjectId(classId) ||
@@ -441,8 +441,8 @@ export const approveJoinRequest = async (req, res) => {
 
 export const rejectJoinRequest = async (req, res) => {
   try {
-    const { classId, userId } = req.params;
-
+    const { classId } = req.params;
+    const userId = req.user._id.toString();
     // Validate inputs
     if (
       !mongoose.isValidObjectId(classId) ||

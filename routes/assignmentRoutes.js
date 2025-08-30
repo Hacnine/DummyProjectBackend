@@ -1,5 +1,5 @@
 import express from "express"
-import { requireAuth, requireAdmin } from "../middlewares/roleMiddleware.js"
+import { requireAuth, requireConversationAdmin } from "../middlewares/roleMiddleware.js"
 import {
   createAssignment,
   getClassAssignments,
@@ -20,7 +20,7 @@ const router = express.Router()
 router.use(requireAuth)
 
 // Assignment CRUD routes
-router.post("/create", requireAdmin, createAssignment)
+router.post("/create", requireConversationAdmin, createAssignment)
 router.get("/class/:classId", getClassAssignments)
 router.get("/my-assignments", getUserAssignments)
 router.get("/:id", getAssignmentById)
@@ -29,11 +29,11 @@ router.delete("/:id", deleteAssignment)
 
 // Assignment submission routes
 router.post("/class/:classId/submit", submitAssignment)
-router.get("/:classId/submissions", requireAdmin, getSubmissions)
-router.put("/:classId/mark/:submissionId", requireAdmin, markAssignment)
+router.get("/:classId/submissions", requireConversationAdmin, getSubmissions)
+router.put("/:classId/mark/:submissionId", requireConversationAdmin, markAssignment)
 router.get("/submission/:submissionId/download", downloadSubmission)
 
 // Statistics routes
-router.get("/:classId/stats", requireAdmin, getAssignmentStats)
+router.get("/:classId/stats", requireConversationAdmin, getAssignmentStats)
 
 export default router

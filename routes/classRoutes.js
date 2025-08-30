@@ -1,5 +1,5 @@
 import express from "express"
-import { requireAuth, requireTeacher, requireAdmin } from "../middlewares/roleMiddleware.js"
+import { requireAuth, requireTeacher, requireConversationAdmin } from "../middlewares/roleMiddleware.js"
 import {
   createClass,
   getClassDetails,
@@ -36,23 +36,23 @@ router.post("/:classId/leave", leaveClass)
 
 // Class-specific routes
 router.get("/:classId", getClassDetails)
-router.put("/:classId", requireAdmin, updateClass)
-router.delete("/:classId", requireAdmin, deleteClass)
-router.get("/:classId/stats", requireAdmin, getClassStats)
+router.put("/:classId", requireConversationAdmin, updateClass)
+router.delete("/:classId", requireConversationAdmin, deleteClass)
+router.get("/:classId/stats", requireConversationAdmin, getClassStats)
 router.get("/:classId/members", getClassMembers)
 
 // Member management routes
-router.put("/:classId/add-member", requireAdmin, addMember)
-router.delete("/:classId/remove-member", requireAdmin, removeMember)
-router.put("/:classId/add-moderator", requireAdmin, addModerator)
-router.put("/:classId/remove-moderator", requireAdmin, removeModerator)
+router.put("/:classId/add-member", requireConversationAdmin, addMember)
+router.delete("/:classId/remove-member", requireConversationAdmin, removeMember)
+router.put("/:classId/add-moderator", requireConversationAdmin, addModerator)
+router.put("/:classId/remove-moderator", requireConversationAdmin, removeModerator)
 
 // Join request routes
-router.get("/:classId/requests/", requireAdmin, getJoinRequests)
-router.put("/:classId/approve/:userId", requireAdmin, approveJoinRequest)
-router.put("/:classId/reject/:userId", requireAdmin, rejectJoinRequest)
+router.get("/:classId/requests/", requireConversationAdmin, getJoinRequests)
+router.put("/:classId/approve/", requireConversationAdmin, approveJoinRequest)
+router.put("/:classId/reject/", requireConversationAdmin, rejectJoinRequest)
 
 // Settings routes
-router.put("/:classId/settings", requireAdmin, updateClassSettings)
+router.put("/:classId/settings", requireConversationAdmin, updateClassSettings)
 
 export default router

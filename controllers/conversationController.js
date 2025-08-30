@@ -606,31 +606,3 @@ export const getGroupJoinRequests = async (req, res) => {
   }
 };
 
-
-export const approveJoinRequest = async (req, res) => {
-  try {
-    const request = await JoinRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found" });
-
-    request.status = "approved";
-    await request.save();
-
-    res.json({ success: true, request });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-export const rejectJoinRequest = async (req, res) => {
-  try {
-    const request = await JoinRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found" });
-
-    request.status = "rejected";
-    await request.save();
-
-    res.json({ success: true, request });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
