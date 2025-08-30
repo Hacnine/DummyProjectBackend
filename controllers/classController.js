@@ -380,8 +380,8 @@ export const getJoinRequests = async (req, res) => {
 
 export const approveJoinRequest = async (req, res) => {
   try {
-    const { classId } = req.params;
-    const userId = req.user._id.toString();
+    const { classId, userId } = req.params;
+console.log(classId, userId)
     // Validate inputs
     if (
       !mongoose.isValidObjectId(classId) ||
@@ -441,8 +441,8 @@ export const approveJoinRequest = async (req, res) => {
 
 export const rejectJoinRequest = async (req, res) => {
   try {
-    const { classId } = req.params;
-    const userId = req.user._id.toString();
+    const { classId, userId } = req.params;
+
     // Validate inputs
     if (
       !mongoose.isValidObjectId(classId) ||
@@ -1158,8 +1158,9 @@ export const getClassJoinRequests = async (req, res) => {
     }
 
     let query = {};
+    let isRequester = false;
 
-    // If user is a teacher, fetch classes where they are admin/moderator
+    // Check if user is a teacher/admin or the requester
     if (user.role === "teacher") {
       const classes = await Conversation.find({
         "group.type": "classroom",
@@ -1172,6 +1173,7 @@ export const getClassJoinRequests = async (req, res) => {
     } else {
       // Non-teachers can only see their own pending join requests
       query = { userId, status: "pending" };
+      isRequester = true;
     }
 
     // Find join requests based on the query
@@ -1180,7 +1182,29 @@ export const getClassJoinRequests = async (req, res) => {
       .populate("classId", "group.name group.classType")
       .sort({ requestedAt: -1 });
 
-    // Group requests by class
+    // If the user is the requester, return only conversation name, date, and image
+    if (isRequester) {
+      const simplifiedRequests = requests.map((request) => ({
+        conversationName: request.classId.group.name,
+        date: request.requestedAt,
+        image: request.userId.image,
+      }));
+
+      // Pagination for simplified requests
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const paginatedRequests = simplifiedRequests.slice(skip, skip + limit);
+
+      return res.json({
+        requests: paginatedRequests,
+        totalRequests: simplifiedRequests.length,
+        page,
+        limit,
+      });
+    }
+
+    // For teachers/admins, group requests by class (original logic)
     const classMap = {};
     requests.forEach((request) => {
       const classId = request.classId._id.toString();
