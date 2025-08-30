@@ -174,7 +174,7 @@ export const createGroup = async (req, res) => {
         type: "group",
         name: name.trim(),
         intro: intro ? intro.trim() : undefined,
-        image: image ? image.trim() : undefined,
+       ...(image && { image: image.trim() }),
         admins: [creatorId],
       },
       visibility,
@@ -463,86 +463,82 @@ export const getGroupJoinRequests = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    // Validate userId
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: "Valid User ID is required" });
     }
 
-    const user = await User.findById(userId).select("_id");
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     let query = {};
-    let groups = [];
+    let isRequester = false;
 
-    // Admins / moderators: groups where they have privileges
-    groups = await Conversation.find({
+    // Check if user is an admin or moderator
+    const groups = await Conversation.find({
       "group.type": "group",
       $or: [{ "group.admins": userId }, { "group.moderators": userId }],
-    })
-      .select("_id group.name group.image")
-      .lean();
-
+    }).select("_id group.name group.image");
+    
     if (groups.length > 0) {
       query = {
         classId: { $in: groups.map((g) => g._id) },
         status: "pending",
       };
     } else {
-      // Non-admins/moderators: only their own pending requests
-      const myPendingClassIds = await JoinRequest.find({
-        userId,
-        status: "pending",
-      }).distinct("classId");
-
-      groups = await Conversation.find({
-        "group.type": "group",
-        _id: { $in: myPendingClassIds },
-      })
-        .select("_id group.name group.image")
-        .lean();
-
+      // Non-admins/moderators can only see their own pending join requests
       query = { userId, status: "pending" };
+      isRequester = true;
     }
 
-    // Fetch requests
+    // Find join requests based on the query
     const requests = await JoinRequest.find(query)
+      .populate("userId", "name image")
       .populate("classId", "group.name group.image")
-      .sort({ requestedAt: -1 })
-      .lean();
+      .sort({ requestedAt: -1 });
 
-    // Batch-load all distinct requester userIds
-    const requesterIds = [...new Set(requests.map((r) => r.userId.toString()))];
-    const users = await User.find({ _id: { $in: requesterIds } })
-      .select("name image")
-      .lean();
+    // If the user is the requester, return only group name, date, and image
+    if (isRequester) {
+      const simplifiedRequests = requests.map((request) => ({
+        groupName: request.classId.group.name,
+        date: request.requestedAt,
+        image: request.userId.image,
+      }));
 
-    const userMap = new Map(
-      users.map((u) => [u._id.toString(), { _id: u._id, name: u.name, image: u.image }])
-    );
+      // Pagination for simplified requests
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 15;
+      const skip = (page - 1) * limit;
+      const paginatedRequests = simplifiedRequests.slice(skip, skip + limit);
 
-    // Group requests by group for initial mapping
+      return res.json({
+        requests: paginatedRequests,
+        totalRequests: simplifiedRequests.length,
+        page,
+        limit,
+      });
+    }
+
+    // For admins/moderators, group requests by group
     const groupMap = {};
     requests.forEach((request) => {
-      const groupId = (request.classId?._id || request.classId).toString();
-      const group = groups.find((g) => g._id.toString() === groupId);
-      if (!group) return;
-
+      const groupId = request.classId._id.toString();
       if (!groupMap[groupId]) {
         groupMap[groupId] = {
-          groupId: group._id,
-          groupName: group.group.name,
-          groupImage: group.group.image || null,
+          groupId: request.classId._id,
+          groupName: request.classId.group.name,
+          groupImage: request.classId.group.image || null,
           requests: [],
         };
       }
-      const user = userMap.get(request.userId.toString());
       groupMap[groupId].requests.push({
         _id: request._id,
         user: {
-          _id: user?._id || request.userId,
-          name: user?.name ?? "",
-          image: user?.image ?? null,
+          _id: request.userId._id,
+          name: request.userId.name,
+          image: request.userId.image,
         },
         status: request.status,
         requestedAt: request.requestedAt,
@@ -550,7 +546,7 @@ export const getGroupJoinRequests = async (req, res) => {
     });
 
     // Convert groupMap to array and sort by latest request date
-    let groupedRequests = Object.values(groupMap).filter((g) => g.requests.length > 0);
+    let groupedRequests = Object.values(groupMap);
     groupedRequests.sort((a, b) => {
       const aLatest = a.requests[0]?.requestedAt || new Date(0);
       const bLatest = b.requests[0]?.requestedAt || new Date(0);
@@ -570,9 +566,9 @@ export const getGroupJoinRequests = async (req, res) => {
       });
     });
 
-    // Pagination: aim for 15 requests
+    // Pagination based on requests
     const page = parseInt(req.query.page) || 1;
-    const limit = 15; // Fixed to 15 as per requirement
+    const limit = parseInt(req.query.limit) || 15;
     const skip = (page - 1) * limit;
     const paginatedFlattenedRequests = flattenedRequests.slice(skip, skip + limit);
 
