@@ -1,11 +1,11 @@
 import jwt from "jsonwebtoken";
-import { getToken, storeToken } from "../utils/redisTokenStore.js";
+import { getToken, removeToken, storeToken } from "../utils/redisTokenStore.js";
 import User from "../models/userModel.js";
 
 const isLogin = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-
+// console.log(access_token)
     if (!access_token) {
       return res.status(401).json({ message: "Unauthorized: Please log in." });
     }
@@ -47,7 +47,6 @@ const isLogin = async (req, res, next) => {
 const isLogout = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-console.log(access_token, refresh_token)
     // Clear cookies and Redis tokens regardless of token validity
     res.clearCookie("access_token", {
       httpOnly: true,
@@ -63,7 +62,7 @@ console.log(access_token, refresh_token)
     if (access_token) {
       // Optionally, invalidate tokens in Redis
       // Assuming you have a function to delete tokens in redisTokenStore.js
-      await deleteToken(access_token, refresh_token);
+      await removeToken(res, req);
     }
 
     // Proceed to login regardless of previous token state

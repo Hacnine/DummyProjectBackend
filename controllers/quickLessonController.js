@@ -1,21 +1,54 @@
+import mongoose from "mongoose";
 import QuickLesson from "../models/quickLessonModel.js";
+import User from "../models/userModel.js";
 
-// Get all lessons for a user
-export const getQuickLessons = async (req, res) => {
+// Middleware to check if user is teacher or superadmin
+const restrictToTeacherOrSuperadmin = async (req, res, next) => {
   try {
-    const lessons = await QuickLesson.find({ user: req.user._id });
-    res.json(lessons);
+    const user = await User.findById(req.user._id);
+    if (!user || !['teacher', 'superadmin'].includes(user.role)) {
+      return res.status(403).json({ message: "Unauthorized: Only teachers or superadmins can perform this action" });
+    }
+    next();
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
 
+export const getQuickLessons = [
+  restrictToTeacherOrSuperadmin,
+  async (req, res) => {
+    try {
+      const { conversationId } = req.query; // Get conversationId from query parameters
+      if (!conversationId) {
+        return res.status(400).json({ message: 'conversationId is required' });
+      }
+
+      // Validate conversationId is a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+        return res.status(400).json({ message: 'Invalid conversationId' });
+      }
+
+      const lessons = await QuickLesson.find({
+        user: req.user._id,
+        conversationId: conversationId,
+      });
+
+      res.json(lessons);
+    } catch (err) {
+      console.error('Error fetching quick lessons:', err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+];
+
 // Add a new lesson
-export const addQuickLesson = async (req, res) => {
+export const addQuickLesson = [restrictToTeacherOrSuperadmin, async (req, res) => {
   try {
-    const { lessonName, lessonParts } = req.body;
+    const { lessonName, lessonParts, conversationId } = req.body;
     const lesson = new QuickLesson({
       user: req.user._id,
+      conversationId,
       lessonName,
       lessonParts,
     });
@@ -24,10 +57,10 @@ export const addQuickLesson = async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: "Failed to add lesson" });
   }
-};
+}];
 
 // Edit a lesson
-export const editQuickLesson = async (req, res) => {
+export const editQuickLesson = [restrictToTeacherOrSuperadmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { lessonName, lessonParts } = req.body;
@@ -41,10 +74,10 @@ export const editQuickLesson = async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: "Failed to edit lesson" });
   }
-};
+}];
 
 // Delete a lesson
-export const deleteQuickLesson = async (req, res) => {
+export const deleteQuickLesson = [restrictToTeacherOrSuperadmin, async (req, res) => {
   try {
     const { id } = req.params;
     const lesson = await QuickLesson.findOneAndDelete({ _id: id, user: req.user._id });
@@ -53,4 +86,4 @@ export const deleteQuickLesson = async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: "Failed to delete lesson" });
   }
-};
+}];

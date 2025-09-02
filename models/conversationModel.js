@@ -6,8 +6,6 @@ const conversationSchema = new Schema(
     participants: [
       { type: Schema.Types.ObjectId, ref: "User", required: true },
     ],
-    receiverId: { type: Schema.Types.ObjectId, ref: "User" },
-    senderId: { type: Schema.Types.ObjectId, ref: "User" },
     status: {
       type: String,
       enum: ["pending", "accepted", "rejected"],
@@ -28,20 +26,19 @@ const conversationSchema = new Schema(
       },
       name: { type: String },
       intro: { type: String },
-      image: { type: String }, // Group profile picture
-      admins: [{ type: Schema.Types.ObjectId, ref: "User" }], // Users with admin rights
+      image: { type: String, default: "/images/cover/default-cover.jpg" },
+      admins: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
-      // Extended fields for classroom functionality
       classType: {
         type: String,
         enum: ["regular", "weekly", "multi-weekly", "monthly", "exam"],
         default: "regular",
       },
-      fileSendingAllowed: { type: Boolean, default: true },
+      fileSendingAllowed: { type: Boolean, default: false },
       moderators: [{ type: Schema.Types.ObjectId, ref: "User" }],
-      startTime: { type: String, default: "09:00" }, 
-      cutoffTime: { type: String, default: "09:15" }, 
-      checkInterval: { type: Number, default: 15 }, 
+      startTime: { type: String, default: "09:00" },
+      cutoffTime: { type: String, default: "09:15" },
+      checkInterval: { type: Number, default: 15 },
       selectedDays: [
         {
           type: Number,
@@ -70,8 +67,24 @@ const conversationSchema = new Schema(
     },
     unread_messages: [
       {
-        user: { type: Schema.Types.ObjectId, ref: "User" },
+        user: { type: Schema.Types.ObjectId, ref: "User", required: true },
         count: { type: Number, default: 0 },
+      },
+    ],
+    autoDeleteMessagesAfter: {
+      type: Number, // in hours
+      default: 24,
+      min: 1,
+    },
+    blockList: [
+      {
+        blockedBy: { type: Schema.Types.ObjectId, ref: "User", required: true }, // Who blocked
+        blockedUser: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        }, // Who is blocked
+        blockedAt: { type: Date, default: Date.now },
       },
     ],
   },
@@ -82,6 +95,17 @@ const conversationSchema = new Schema(
 conversationSchema.index({ visibility: 1 });
 conversationSchema.index({ "group.type": 1 });
 conversationSchema.index({ participants: 1, updatedAt: -1 });
+
+conversationSchema.pre("save", function (next) {
+  if (
+    this.group &&
+    this.group.type === "group" &&
+    (!this.group.image || this.group.image === "/images/cover/default-cover.jpg")
+  ) {
+    this.group.image = "/images/cover/default-group.png";
+  }
+  next();
+});
 
 const Conversation = mongoose.model("Conversation", conversationSchema);
 export default Conversation;

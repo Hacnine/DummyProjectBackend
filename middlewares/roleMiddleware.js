@@ -58,15 +58,14 @@ export const requireAuth = async (req, res, next) => {
   }
 };
 
-export const requireClassAdmin = async (req, res, next) => {
+export const requireConversationAdmin = async (req, res, next) => {
   try {
     const { classId } = req.params;
     const userId = req.user._id.toString();
-    console.log("userId",userId);
     const classGroup = await Conversation.findById(classId);
 
     if (!classGroup || !classGroup.group.is_group) {
-      return res.status(404).json({ message: "Class not found." });
+      return res.status(404).json({ message: "Conversation not found." });
     }
 
    const isAdmin = classGroup.group.admins.some(

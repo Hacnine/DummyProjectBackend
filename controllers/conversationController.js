@@ -2,8 +2,11 @@ import Conversation from "../models/conversationModel.js";
 import JoinRequest from "../models/joinRequestModel.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
+import { formatConversation } from "../utils/controller-utils/conversationUtils.js";
+import { FriendList } from "../models/friendListModel.js";
+import UnreadCount from "../models/unreadCountModel.js";
 
-const createConversation = async (req, res) => {
+export const createConversation = async (req, res) => {
   const { senderId, receiverId } = req.body;
   try {
     // Check if a conversation already exists between the two users
@@ -18,8 +21,6 @@ const createConversation = async (req, res) => {
     // If no conversation exists, create a new one
     const newConversation = new Conversation({
       participants: [senderId, receiverId],
-      senderId: senderId,
-      receiverId: receiverId,
     });
 
     // save status in redis
@@ -35,50 +36,19 @@ const createConversation = async (req, res) => {
 };
 
 // Get all conversations for the logged-in user
-const getAllConversations = async (req, res) => {
+export const getAllConversations = async (req, res) => {
   try {
-    const { userId } = req.params; // Get logged-in user ID from request
+    const { userId } = req.params; // Logged-in user ID
 
     const conversations = await Conversation.find({ participants: userId })
       .populate("participants", "name image")
-      .sort({ updatedAt: -1 }) // <-- Sort by activity
-      .limit(30) // <-- Only fetch most recent 30
-      .lean(); // Convert Mongoose documents to plain objects
+      .sort({ updatedAt: -1 }) // sort by activity
+      .limit(30) // fetch recent 30
+      .lean();
 
-    // Format conversations to include both participants' info
-    const formattedConversations = conversations.map((convo) => {
-      if (convo.group?.is_group) {
-        return {
-          _id: convo._id,
-          name: convo.group.name,
-          image: convo.group.image || "images/default-group.svg",
-          last_message: convo.last_message,
-          is_group: true,
-          conversationType: convo.group.type || "group", //  Add this
-          participants: convo.participants.map((user) => ({
-            _id: user._id,
-            name: user.name,
-            image: user.image || "images/default-avatar.svg",
-          })),
-        };
-      } else {
-        return {
-          _id: convo._id,
-          senderId: convo.senderId,
-          receiverId: convo.receiverId,
-          status: convo.status,
-          last_message: convo.last_message,
-          is_group: false,
-          conversationType: "one to one",
-          participants: convo.participants.map((user) => ({
-            _id: user._id,
-            name: user.name,
-            image: user.image || "images/default-avatar.svg",
-          })),
-          unreadMessages: 0,
-        };
-      }
-    });
+    const formattedConversations = conversations.map((convo) =>
+      formatConversation(convo, userId)
+    );
 
     res.json(formattedConversations);
   } catch (error) {
@@ -86,6 +56,7 @@ const getAllConversations = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -116,56 +87,31 @@ export const searchGroups = async (req, res) => {
     }
 
     const escapedQuery = escapeRegex(query);
-    let searchCriteria = [];
 
     // Search for public group conversations by name
-    searchCriteria.push({
+    const searchCriteria = {
       "group.name": { $regex: escapedQuery, $options: "i" },
       "group.is_group": true,
       "group.type": "group",
       visibility: "public",
-    });
+      participants: { $nin: [currentUserId] },
+    };
 
-    // Search for users by name or email
-    const users = await User.find({
-      $or: [
-        { name: { $regex: escapedQuery, $options: "i" } },
-        { email: { $regex: escapedQuery, $options: "i" } },
-      ],
-    }).select("_id");
+    const total = await Conversation.countDocuments(searchCriteria);
 
-    // Validate user IDs
-    if (users.length > 0) {
-      const userIds = users
-        .map((user) => user._id)
-        .filter((id) => mongoose.isValidObjectId(id));
-
-      if (userIds.length > 0) {
-        searchCriteria.push({
-          participants: { $in: userIds },
-          "group.is_group": true,
-          "group.type": "group",
-          visibility: "public",
-        });
-      } else {
-        console.warn("No valid user IDs found for query:", query);
-      }
-    }
-
-    // If no search criteria, return empty result
-    const finalCriteria =
-      searchCriteria.length > 0 ? { $or: searchCriteria } : {};
-
-    const total = await Conversation.countDocuments(finalCriteria);
-
-    const conversations = await Conversation.find(finalCriteria)
+    const conversations = await Conversation.find(searchCriteria)
       .select("group.name group.image group.intro group.type participants")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
 
     if (!conversations.length) {
-      return res.status(404).json({ message: "Not found" });
+      return res.status(200).json({
+        groups: [],
+        total: 0,
+        page: pageNum,
+        totalPages: 0,
+      });
     }
 
     // Fetch pending join requests for the current user
@@ -178,28 +124,20 @@ export const searchGroups = async (req, res) => {
       .select("classId")
       .lean();
 
-    // Create a Set of conversation IDs with pending requests for O(1) lookup
+    // Use Set for O(1) lookup of pending request classIds
     const pendingRequestIds = new Set(
       pendingRequests.map((req) => req.classId.toString())
     );
 
-    const formattedGroups = conversations.map((conv) => {
-      const alreadyMember = conv.participants?.some(
-        (participantId) => participantId.toString() === currentUserId.toString()
-      );
-
-      return {
-        _id: conv._id.toString(),
-        name: conv.group?.name || "Unnamed Group",
-        image: conv.group?.image || null,
-        intro: conv.group?.intro || "N/A",
-        type: conv.group?.type || "group",
-        members: conv.participants?.length || 0,
-        status: alreadyMember ? "active" : "inactive",
-        alreadyMember: !!alreadyMember,
-        hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
-      };
-    });
+    const formattedGroups = conversations.map((conv) => ({
+      _id: conv._id.toString(),
+      name: conv.group?.name || "Unnamed Group",
+      image: conv.group?.image || null,
+      intro: conv.group?.intro || "N/A",
+      type: conv.group?.type || "group",
+      members: conv.participants?.length || 0,
+      hasPendingRequest: pendingRequestIds.has(conv._id.toString()),
+    }));
 
     res.status(200).json({
       groups: formattedGroups,
@@ -208,8 +146,8 @@ export const searchGroups = async (req, res) => {
       totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
-    console.error("Error searching groups:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error searching groups:", error.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -236,7 +174,7 @@ export const createGroup = async (req, res) => {
         type: "group",
         name: name.trim(),
         intro: intro ? intro.trim() : undefined,
-        image: image ? image.trim() : undefined,
+       ...(image && { image: image.trim() }),
         admins: [creatorId],
       },
       visibility,
@@ -257,7 +195,7 @@ export const createGroup = async (req, res) => {
   }
 };
 
-const getConversationById = async (req, res) => {
+export const getConversationById = async (req, res) => {
   const { chatId } = req.params;
   const { userId } = req.query;
 
@@ -298,7 +236,7 @@ const getConversationById = async (req, res) => {
       participants: conversation.participants.map((user) => ({
         _id: user._id,
         name: user.name,
-        image: user.image || "images/default-avatar.svg",
+        image: user.image ,
         
       })),
       themeIndex: conversation.themeIndex
@@ -311,72 +249,110 @@ const getConversationById = async (req, res) => {
   }
 };
 
-const updateMessageRequestStatus = async (req, res) => {
+
+export const getUnreadRequestCounts = async (req, res) => {
+  const userId = req.user._id;
   try {
-    const { conversationId } = req.params;
-    const { status } = req.body; // "pending", "accepted", or "rejected"
-    // Validate status
-    const validStatuses = ["pending", "accepted", "rejected"];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
+    // Validate input
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
     }
 
+    // Find the unread count document for the user
+    let unreadCount = await UnreadCount.findOne({ user: userId })
+      .select('unreadFriendRequestCount unreadGroupRequestCount unreadClassRequestCount')
+      .lean();
+
+    // If no document exists, create one with default values
+    if (!unreadCount) {
+      unreadCount = await UnreadCount.create({
+        user: userId,
+        unreadFriendRequestCount: 0,
+        unreadGroupRequestCount: 0,
+        unreadClassRequestCount: 0,
+        unreadMessages: [],
+      });
+    }
+
+    // Return only the requested fields
+    const response = {
+      unreadFriendRequestCount: unreadCount.unreadFriendRequestCount || 0,
+      unreadGroupRequestCount: unreadCount.unreadGroupRequestCount || 0,
+      unreadClassRequestCount: unreadCount.unreadClassRequestCount || 0,
+    };
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error('Error fetching unread counts:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const acceptMessageRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { conversationId } = req.params;
+
     // Find the conversation
-    const conversation = await Conversation.findById(conversationId);
+    const conversation = await Conversation.findById(conversationId).session(session);
+    console.log(conversation)
     if (!conversation) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Prevent unnecessary updates
-    if (conversation.status === status) {
+    // Check if already accepted
+    if (conversation.status === "accepted") {
+      await session.abortTransaction();
+      session.endSession();
       return res
         .status(400)
-        .json({ message: `Message request is already ${status}` });
+        .json({ message: "Message request already accepted" });
     }
-    const statusTransitions = {
-      rejected: ["pending", "accepted"], //  Allow moving directly to "accepted"
-      pending: ["accepted", "rejected"],
-      accepted: [], // No further transitions after "accepted"
-    };
-
-    if (!statusTransitions[conversation.status]?.includes(status)) {
-      return res.status(400).json({ message: "Invalid status transition" });
-    }
-
-    // // Business logic: Ensure valid transitions
-    // const statusTransitions = {
-    //   rejected: ["pending"], // Can only move to "pending", not "accepted" directly
-    //   pending: ["accepted", "rejected"], // Can move to "accepted" or "rejected"
-    // };
-
-    // if (!statusTransitions[conversation.status]?.includes(status)) {
-    //   return res.status(400).json({ message: "Invalid status transition" });
-    // }
 
     // Update status
-    conversation.status = status;
-    await conversation.save();
+    conversation.status = "accepted";
+    await conversation.save({ session });
 
-    // Determine event name
-    const eventMapping = {
-      pending: "messageRequestPending",
-      accepted: "messageRequestAccepted",
-      rejected: "messageRequestRejected",
-    };
+    // Update friend lists for both users
+    const [userA, userB] = conversation.participants;
 
-    // Notify participants
+    // Add userB to userA's friend list
+    await FriendList.updateOne(
+      { user: userA },
+      { $addToSet: { friends: userB } },
+      { upsert: true, session }
+    );
+
+    // Add userA to userB's friend list
+    await FriendList.updateOne(
+      { user: userB },
+      { $addToSet: { friends: userA } },
+      { upsert: true, session }
+    );
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Notify participants after commit
     conversation.participants.forEach((participant) => {
-      req.io.to(participant.toString()).emit(eventMapping[status], {
+      req.io.to(participant.toString()).emit("messageRequestAccepted", {
         conversationId: conversation._id,
-        message: `Message request ${status}`,
+        message: `Message request accepted`,
       });
     });
 
     res
       .status(200)
-      .json({ message: `Message request ${status}`, conversation });
+      .json({ message: "Message request accepted", conversation });
   } catch (error) {
-    console.error("Error updating message request status:", error);
+    console.error("Error accepting message request:", error);
+    await session.abortTransaction();
+    session.endSession();
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -402,9 +378,227 @@ export const updateConversationThemeIndex = async (req, res) => {
   }
 };
 
-export {
-  createConversation,
-  getAllConversations,
-  getConversationById,
-  updateMessageRequestStatus,
+
+export const deleteConversation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if the ID is a valid ObjectId
+    if (!id || id.length !== 24) {
+      return res.status(400).json({ message: "Invalid conversation ID." });
+    }
+
+    // Try to find and delete the conversation
+    const deletedConversation = await Conversation.findByIdAndDelete(id);
+
+    if (!deletedConversation) {
+      return res.status(404).json({ message: "Conversation not found." });
+    }
+
+    res.status(200).json({ message: "Conversation deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting conversation:", error);
+    res.status(500).json({ message: "Server error. Could not delete conversation." });
+  }
 };
+
+export const getPendingConversationRequests = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Find all pending one-to-one conversations for the user
+    const conversations = await Conversation.find({
+      participants: userId,
+      status: "pending",
+      "group.is_group": false,
+    })
+      .populate("participants", "name image")
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Process conversations to return required fields
+    const formattedConversations = conversations.map((conversation) => {
+      // Find the other participant (not the requesting user)
+      const otherParticipant = conversation.participants.find(
+        (participant) => participant._id.toString() !== userId.toString()
+      );
+
+      // Check if the requestor (userId) is at index 0
+      const isRequestor = conversation.participants[0]._id.toString() === userId.toString();
+
+      // Base response object
+      const response = {
+        conversationId: conversation._id,
+        name: otherParticipant ? otherParticipant.name : null,
+        image: otherParticipant ? otherParticipant.image : null,
+      };
+
+      // Include status only if the user is the requestor (at index 0)
+      if (isRequestor) {
+        response.status = conversation.status;
+      }
+
+      return response;
+    });
+
+    res.json({ conversations: formattedConversations });
+  } catch (error) {
+    console.error("Error fetching pending conversations:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getGroupJoinRequests = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Validate userId
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: "Valid User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let query = {};
+    let isRequester = false;
+
+    // Check if user is an admin or moderator
+    const groups = await Conversation.find({
+      "group.type": "group",
+      $or: [{ "group.admins": userId }, { "group.moderators": userId }],
+    }).select("_id group.name group.image");
+    
+    if (groups.length > 0) {
+      query = {
+        classId: { $in: groups.map((g) => g._id) },
+        status: "pending",
+      };
+    } else {
+      // Non-admins/moderators can only see their own pending join requests
+      query = { userId, status: "pending" };
+      isRequester = true;
+    }
+
+    // Find join requests based on the query
+    const requests = await JoinRequest.find(query)
+      .populate("userId", "name image")
+      .populate("classId", "group.name group.image")
+      .sort({ requestedAt: -1 });
+
+    // If the user is the requester, return only group name, date, and image
+    if (isRequester) {
+      const simplifiedRequests = requests.map((request) => ({
+        groupName: request.classId.group.name,
+        date: request.requestedAt,
+        image: request.userId.image,
+      }));
+
+      // Pagination for simplified requests
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 15;
+      const skip = (page - 1) * limit;
+      const paginatedRequests = simplifiedRequests.slice(skip, skip + limit);
+
+      return res.json({
+        requests: paginatedRequests,
+        totalRequests: simplifiedRequests.length,
+        page,
+        limit,
+      });
+    }
+
+    // For admins/moderators, group requests by group
+    const groupMap = {};
+    requests.forEach((request) => {
+      const groupId = request.classId._id.toString();
+      if (!groupMap[groupId]) {
+        groupMap[groupId] = {
+          groupId: request.classId._id,
+          groupName: request.classId.group.name,
+          groupImage: request.classId.group.image || null,
+          requests: [],
+        };
+      }
+      groupMap[groupId].requests.push({
+        _id: request._id,
+        user: {
+          _id: request.userId._id,
+          name: request.userId.name,
+          image: request.userId.image,
+        },
+        status: request.status,
+        requestedAt: request.requestedAt,
+      });
+    });
+
+    // Convert groupMap to array and sort by latest request date
+    let groupedRequests = Object.values(groupMap);
+    groupedRequests.sort((a, b) => {
+      const aLatest = a.requests[0]?.requestedAt || new Date(0);
+      const bLatest = b.requests[0]?.requestedAt || new Date(0);
+      return new Date(bLatest) - new Date(aLatest);
+    });
+
+    // Flatten requests for pagination
+    const flattenedRequests = [];
+    groupedRequests.forEach((groupItem) => {
+      groupItem.requests.forEach((request) => {
+        flattenedRequests.push({
+          groupId: groupItem.groupId,
+          groupName: groupItem.groupName,
+          groupImage: groupItem.groupImage,
+          request,
+        });
+      });
+    });
+
+    // Pagination based on requests
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const skip = (page - 1) * limit;
+    const paginatedFlattenedRequests = flattenedRequests.slice(skip, skip + limit);
+
+    // Re-group requests by group
+    const result = [];
+    const seenGroupIds = new Set();
+    paginatedFlattenedRequests.forEach(({ groupId, groupName, groupImage, request }) => {
+      const groupIdStr = groupId.toString();
+      if (!seenGroupIds.has(groupIdStr)) {
+        seenGroupIds.add(groupIdStr);
+        result.push({
+          groupId,
+          groupName,
+          groupImage,
+          requests: [],
+        });
+      }
+      const groupItem = result.find((item) => item.groupId.toString() === groupIdStr);
+      groupItem.requests.push(request);
+    });
+
+    res.json({
+      groups: result,
+      totalRequests: flattenedRequests.length,
+      page,
+      limit,
+    });
+  } catch (error) {
+    console.error("Error fetching group join requests:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

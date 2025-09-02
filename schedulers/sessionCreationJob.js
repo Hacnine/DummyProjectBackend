@@ -103,8 +103,12 @@ export const startCronJobs = async () => {
 
     // Schedule cron jobs for all classes
     classes.forEach((classGroup) => {
-      scheduleSessionCronForClass(classGroup);
-      console.log(`Cron job scheduled for class ${classGroup._id} (${classGroup.group.name})`);
+      if (classGroup.group.type === "classroom") {
+        scheduleSessionCronForClass(classGroup);
+        console.log(`Cron job scheduled for class ${classGroup._id} (${classGroup.group.name})`);
+      } else {
+        console.log(`Skipping cron job for non-classroom group ${classGroup._id} (${classGroup.group.name})`);
+      }
     });
 
     // Schedule absent marking based on a dynamic check interval
@@ -119,9 +123,9 @@ export const startCronJobs = async () => {
 
         for (const session of sessions) {
           const classGroup = await Conversation.findById(session.classId);
-          if (!classGroup) {
-            console.error(`Class not found for session ${session._id}`);
-            continue;
+          if (!classGroup || !classGroup.group || classGroup.group.type !== "classroom" || !Array.isArray(classGroup.participants)) {
+            console.error(`Invalid classGroup or participants for session ${session._id}. ClassId: ${session.classId}`);
+            continue; // Skip to the next session
           }
 
           const startTime = classGroup.group.startTime || "09:00";
@@ -130,15 +134,15 @@ export const startCronJobs = async () => {
           const cutoff = moment(`${session.date} ${cutoffTime}`, "YYYY-MM-DD HH:mm");
 
           if (now.isAfter(cutoff)) {
-            const members = classGroup.group.members;
+            const participants = classGroup.participants; // Use participants instead of members
             const existingLogs = await AttendanceLog.find({ sessionId: session._id }).select("userId enteredAt status");
             const attendedUsers = existingLogs.map(log => ({
               userId: log.userId.toString(),
               enteredAt: log.enteredAt,
               status: log.status,
             }));
-            const absentUsers = members.filter(member => {
-              const log = attendedUsers.find(u => u.userId === member.toString());
+            const absentUsers = participants.filter(participant => {
+              const log = attendedUsers.find(u => u.userId === participant.toString());
               return !log || (log && now.isAfter(cutoff));
             });
 

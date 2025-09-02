@@ -3,7 +3,7 @@ import UserApproval from "../models/userApprovalModel.js"
 import AdminSettings from "../models/adminSettingsModel.js"
 import AdminActivityLog from "../models/adminActivityLogModel.js"
 import Conversation from "../models/conversationModel.js"
-import Message from "../models/chatModel.js"
+import Message from "../models/messageModel.js"
 
 // Log admin activity
 const logAdminActivity = async (admin, action, targetType, targetId, details, req) => {

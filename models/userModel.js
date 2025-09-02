@@ -8,7 +8,7 @@ const userSchema = new Schema(
     email: { type: String, required: true, trim: true, unique: true },
     password: { type: String, required: true, trim: true },
     gender: { type: String, required: true },
-    image: { type: String, required: false, trim: true },
+    image: { type: String, required: false, trim: true, default:"/images/avatar/default-avatar.svg" },
     bio: { type: String, trim: true, maxlength: 150 },
     role: {
       type: String,
@@ -17,15 +17,15 @@ const userSchema = new Schema(
     },
     is_active: { type: Boolean, default: false },
     last_seen: { type: Date, default: null },
-    themeIndex: { type: Number, default: 1, required: false },
+    themeIndex: { type: Number, default: 0, required: false },
     fileSendingAllowed: { type: Boolean, default: false },
     notification_settings: {
-      new_message: { type: Boolean, default: true },
-      mention: { type: Boolean, default: true },
-      sound: { type: Boolean, default: true },
+      new_message: { type: Boolean, default: null },
+      mention: { type: Boolean, default: null },
+      sound: { type: Boolean, default: null },
     },
 
-    device_tokens: [{ type: String }], // For push notifications
+    device_tokens: [{ type: String, default: null }], // For push notifications
 
     two_factor_auth: {
       enabled: { type: Boolean, default: false },

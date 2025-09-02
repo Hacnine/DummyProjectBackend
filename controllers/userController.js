@@ -3,13 +3,16 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
 import { redisClient } from "../utils/redisClient.js";
-import { validationResult } from "express-validator";
 import { fileURLToPath } from "url";
 import path from "path";
 import User from "../models/userModel.js";
 import { onlineUsers } from "../sockets/onlineUserSocket.js";
 import { createUserApproval } from "../utils/userApprovalMiddleware.js";
 import AdminSettings from "../models/adminSettingsModel.js";
+import asyncHandler from 'express-async-handler';
+import { param, validationResult } from 'express-validator';
+import { Block } from "../models/blockModel.js";
+import Conversation from "../models/conversationModel.js";
 
 const register = async (req, res) => {
   try {
@@ -39,7 +42,8 @@ const register = async (req, res) => {
     }
 
     // Check for existing name (case-insensitive)
-    const existingName = await userModel.findOne({ name: new RegExp(`^${name}$`, "i") });
+    const normalizedName = name.trim().toLowerCase();
+    const existingName = await userModel.findOne({ name: new RegExp(`^${normalizedName}$`, "i") });
     if (existingName) {
       return res.status(400).json({
         error: { message: `'${name}' name is already taken. Choose a different name.` },
@@ -56,10 +60,11 @@ const register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = new userModel({
-      name,
+      name:normalizedName,
       email: normalizedEmail,
       password: passwordHash,
       gender: gender.toLowerCase(),
+      image:`${gender.toLowerCase() === "male"? "/images/avatar/default-avatar.svg":"/images/avatar/womanav1.svg"}`,
       // If no settings exist, make the first user an admin
       isAdmin: !settings,
     });
@@ -106,7 +111,6 @@ const register = async (req, res) => {
   }
 };
 
-
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -117,9 +121,12 @@ const login = async (req, res) => {
         .json({ message: "Email and password are required." });
     }
 
+    // Normalize email to lowercase
+    const normalizedEmail = email.toLowerCase();
+
     // Find user and include password explicitly
     const user = await userModel
-      .findOne({ email })
+      .findOne({ email: normalizedEmail })
       .select(
         "name email gender image bio role account_status is_active last_seen themeIndex fileSendingAllowed password"
       );
@@ -144,13 +151,13 @@ const login = async (req, res) => {
     }
 
     // Log login metadata (optional but useful)
-    console.log("Login attempt", {
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-      user: user._id.toString(),
-    });
+    // console.log("Login attempt", {
+    //   ip: req.ip,
+    //   userAgent: req.headers["user-agent"],
+    //   user: user._id.toString(),
+    // });
 
-    // Update last_seen (optional: add to your schema)
+    // Update last_seen
     await userModel.findByIdAndUpdate(user._id, { last_seen: new Date() });
 
     // Clear old cookies
@@ -209,7 +216,6 @@ const login = async (req, res) => {
       .json({ message: "Internal server error", error: error.message });
   }
 };
-
 const logout = async (req, res) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
@@ -277,7 +283,7 @@ export const searchUser = async (req, res) => {
 
     // Fetch paginated results
     const users = await User.find(searchCriteria)
-      .select("name email image")
+      .select("name image")
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
       .lean();
@@ -329,34 +335,37 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-const getUserInfo = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const cacheKey = `user:${userId}`;
-
-    // Check if user data exists in Redis
-    const cachedUser = await redisClient.get(cacheKey);
-    if (cachedUser) {
-      return res.json(JSON.parse(cachedUser)); //  Ensure response is sent
-    }
-
-    // Fetch from MongoDB if not in cache
-    const user = await userModel.findById(userId).select("-password").lean();
-    if (!user) {
-      // console.log("User not found in DB"); //  Debugging log
-      return res.status(404).json({ message: "User not found" }); //  Send 404 response
-    }
-
-    // Store in Redis with 1-hour expiration
-    await redisClient.set(cacheKey, JSON.stringify(user), "EX", 3600);
-    // console.log("User stored in cache:", user); //  Debugging log
-
-    return res.json(user); //  Ensure response is sent
-  } catch (error) {
-    console.error("Error fetching user info:", error);
-    return res.status(500).json({ message: "Failed to get user info" }); //  Return proper error response
+export const getUserInfo = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
-};
+
+  const { userId } = req.params;
+
+  // Ensure the userId is valid
+  if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+    return res.status(400).json({ message: 'Invalid user ID' });
+  }
+
+  // Fetch user with specific fields only
+  const user = await User.findById(userId).select('name email bio image role is_active last_seen');
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+      name: user.name,
+      email: user.email,
+      bio: user.bio || '',
+      image: user.image || '',
+      role: user.role,
+      is_active: user.is_active,
+      last_seen: user.last_seen,
+    },
+  );
+});
 
 const updateUserInfo = async (req, res) => {
   const { userId } = req.params;
@@ -466,12 +475,233 @@ export const updateUserThemeIndex = async (req, res) => {
   }
 };
 
+
+// Update user name
+export const updateName = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name } = req.body;
+  const userId = req.user._id; // Assuming user ID is available from authentication middleware
+
+  // Check if name already exists
+  const existingUser = await User.findOne({ name, _id: { $ne: userId } });
+  if (existingUser) {
+    return res.status(400).json({ message: 'Name already taken' });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { name, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Name updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+// Update user email
+export const updateEmail = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { email } = req.body;
+  const userId = req.user._id;
+
+  // Check if email already exists
+  const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+  if (existingUser) {
+    return res.status(400).json({ message: 'Email already taken' });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { email, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Email updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+// Update user password
+export const updatePassword = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { password } = req.body;
+  const userId = req.user._id;
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { password, updatedAt: Date.now() },
+    { new: true, select: 'name email' }
+  );
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  res.status(200).json({
+    message: 'Password updated successfully',
+    user: { name: user.name, email: user.email }
+  });
+});
+
+
+//  Helper: Add user to conversation blockList
+const addToConversationBlockList = async (
+  conversationId,
+  blockerId,
+  blockedId
+) => {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const alreadyBlocked = conversation.blockList.some(
+    (entry) =>
+      entry.blockedBy.toString() === blockerId.toString() &&
+      entry.blockedUser.toString() === blockedId.toString()
+  );
+
+  if (!alreadyBlocked) {
+    conversation.blockList.push({
+      blockedBy: blockerId,
+      blockedUser: blockedId,
+    });
+    await conversation.save();
+  }
+
+  return conversation;
+};
+// Helper: Remove user from conversation blockList
+const removeFromConversationBlockList = async (
+  conversationId,
+  blockerId,
+  blockedId
+) => {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  conversation.blockList = conversation.blockList.filter(
+    (entry) =>
+      !(
+        entry.blockedBy.toString() === blockerId.toString() &&
+        entry.blockedUser.toString() === blockedId.toString()
+      )
+  );
+
+  await conversation.save();
+  return conversation;
+};
+
+// Block a user
+export const blockUser = async (req, res) => {
+  try {
+    const blockerId = req.user._id;
+    const { blockedId, conversationId } = req.body;
+
+    if (blockerId.toString() === blockedId) {
+      return res.status(400).json({ message: "You cannot block yourself." });
+    }
+
+    // ---- Global Block ----
+    const existingGlobal = await Block.findOne({
+      blocker: blockerId,
+      blocked: blockedId,
+    });
+    if (existingGlobal) {
+      return res
+        .status(400)
+        .json({ message: "User already globally blocked." });
+    }
+
+    const globalBlock = await Block.create({
+      blocker: blockerId,
+      blocked: blockedId,
+    });
+
+    // ---- Conversation-level Block (optional) ----
+    let updatedConversation = null;
+    if (conversationId) {
+      updatedConversation = await addToConversationBlockList(
+        conversationId,
+        blockerId,
+        blockedId
+      );
+    }
+
+    res.status(201).json({
+      message: "User blocked successfully.",
+      globalBlock,
+      conversation: updatedConversation,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Unblock a user
+export const unblockUser = async (req, res) => {
+  try {
+    const blockerId = req.user._id;
+    const { userId } = req.params; // blocked user
+    const { conversationId } = req.body; // optional
+
+    // ---- Global Unblock ----
+    const deletedGlobal = await Block.findOneAndDelete({
+      blocker: blockerId,
+      blocked: userId,
+    });
+
+    // ---- Conversation-level Unblock ----
+    let updatedConversation = null;
+    if (conversationId) {
+      updatedConversation = await removeFromConversationBlockList(
+        conversationId,
+        blockerId,
+        userId
+      );
+    }
+
+    if (!deletedGlobal && !updatedConversation) {
+      return res.status(404).json({ message: "User not blocked." });
+    }
+
+    res.json({
+      message: "User unblocked successfully.",
+      deletedGlobal,
+      conversation: updatedConversation,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
 export {
   register,
   login,
   logout,
   getAllUsers,
-  getUserInfo,
   updateUserInfo,
   refreshToken,
 };
