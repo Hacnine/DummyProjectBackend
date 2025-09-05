@@ -7,7 +7,7 @@ import moment from "moment";
 export const createManualSession = async (req, res) => {
   try {
     const { date, startTime, cutoffTime, duration } = req.body;
-    const createdBy = req.user._id;
+    const createdBy = req.user._id.toString();
     const { classId } = req.params;
     const classGroup = await Conversation.findById(classId);
     if (!classGroup || !classGroup.group.admins.includes(createdBy)) {
@@ -139,8 +139,8 @@ export const getLastSession = async (req, res) => {
 export const markAttendance = async (req, res) => {
   try {
     const { sessionId, classId, enteredAt } = req.body;
-    console.log(sessionId)
-    const userId = req.user._id;
+
+    const userId = req.user._id.toString();
     const today = moment().format("YYYY-MM-DD");
     const now = moment();
 
@@ -150,7 +150,7 @@ export const markAttendance = async (req, res) => {
     }
 
     const classGroup = await Conversation.findById(session.classId);
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
+    if (!classGroup || !classGroup.participants.includes(userId)) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -206,7 +206,7 @@ export const editAttendance = async (req, res) => {
     }
 
     const classGroup = await Conversation.findById(record.classId);
-    if (!classGroup.group.admins.includes(req.user._id)) {
+    if (!classGroup.group.admins.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -224,20 +224,20 @@ export const editAttendance = async (req, res) => {
 export const bulkUpdateAttendance = async (req, res) => {
   try {
     const { sessionId, updates } = req.body; // updates: [{ userId, status, duration, leftAt }]
-console.log(updates, "sessionID")
+// console.log(updates, "sessionID")
     const session = await Session.findById(sessionId);
     if (!session) {
       return res.status(404).json({ message: "Session not found" });
     }
 
     const classGroup = await Conversation.findById(session.classId);
-    if (!classGroup.group.admins.includes(req.user._id)) {
+    if (!classGroup.group.admins.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
     const validStatuses = ["present", "late", "absent", "excused"];
     const bulkOps = updates
-      .filter(({ userId, status }) => classGroup.group.members.includes(userId) && validStatuses.includes(status))
+      .filter(({ userId, status }) => classGroup.participants.includes(userId) && validStatuses.includes(status))
       .map(({ userId, status, duration, leftAt }) => ({
         updateOne: {
           filter: { sessionId, userId, sessionDate: session.date },
@@ -269,7 +269,7 @@ export const getSessionAttendance = async (req, res) => {
     }
 
     const classGroup = await Conversation.findById(session.classId);
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -292,7 +292,7 @@ export const getSessionAttendance = async (req, res) => {
     ]);
 
     const summary = {
-      totalStudents: classGroup.group.members.length,
+      totalStudents: classGroup.participants.length,
       present: stats.find((s) => s._id === "present")?.count || 0,
       late: stats.find((s) => s._id === "late")?.count || 0,
       absent: stats.find((s) => s._id === "absent")?.count || 0,
@@ -317,7 +317,7 @@ export const getStudentAttendance = async (req, res) => {
     const { classId, page = 1, limit = 10 } = req.query;
 
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -371,7 +371,7 @@ export const getClassAttendance = async (req, res) => {
 
     // Find class
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -400,7 +400,7 @@ export const getAttendanceAnalytics = async (req, res) => {
 
     // Validate class and user access
     const classGroup = await Conversation.findById(classId);
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id.toString())) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -474,7 +474,7 @@ export const getAttendanceAnalytics = async (req, res) => {
 
     // Initialize summary with default values
     const summary = {
-      totalStudents: classGroup.group.members.length,
+      totalStudents: classGroup.participants.length,
       totalSessions,
       present: 0,
       late: 0,

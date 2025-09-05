@@ -40,7 +40,7 @@ export const getClassAssignments = async (req, res) => {
 
     // Check if user is member of the class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -79,7 +79,7 @@ export const getAssignmentById = async (req, res) => {
 
     // Check if user has access to this assignment
     const classGroup = await Conversation.findById(assignment.classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -178,7 +178,7 @@ export const submitAssignment = async (req, res) => {
 
     // Check if user is a member of the class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
+    if (!classGroup || !classGroup.participants.includes(userId)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -328,7 +328,7 @@ export const downloadSubmission = async (req, res) => {
 
     // Check if user has access
     const classGroup = await Conversation.findById(submission.classId)
-    const hasAccess = classGroup.group.members.includes(req.user._id)
+    const hasAccess = classGroup.participants.includes(req.user._id)
 
     if (!hasAccess) {
       return res.status(403).json({ message: "Access denied" })
