@@ -7,7 +7,7 @@ const assignmentSubmissionSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     assignmentTitle: { type: String, required: true },
     assignmentDescription: { type: String, required: true, maxlength: 1000 },
-
+    status: {type:String, default: 'pending'},
     file: {
       url: { type: String, required: false },
       name: { type: String, required: false },

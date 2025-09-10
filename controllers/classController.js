@@ -381,7 +381,6 @@ export const getJoinRequests = async (req, res) => {
 export const approveJoinRequest = async (req, res) => {
   try {
     const { classId, userId } = req.params;
-console.log(classId, userId)
     // Validate inputs
     if (
       !mongoose.isValidObjectId(classId) ||
@@ -400,7 +399,6 @@ console.log(classId, userId)
     if (!joinRequest) {
       return res.status(404).json({ message: "Join request not found" });
     }
-
     // Add user to class
     const classGroup = req.classGroup;
     if (
@@ -433,6 +431,8 @@ console.log(classId, userId)
       request: joinRequest,
       participants: classGroup.participants,
     });
+
+    await JoinRequest.deleteOne({ _id: joinRequest._id });
   } catch (error) {
     console.error("Error approving join request:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -477,6 +477,7 @@ export const rejectJoinRequest = async (req, res) => {
       message: "Join request rejected",
       request: joinRequest,
     });
+    await JoinRequest.deleteOne({ _id: joinRequest._id });
   } catch (error) {
     console.error("Error rejecting join request:", error);
     res.status(500).json({ message: "Server error", error: error.message });

@@ -19,7 +19,7 @@ import logger from "./utils/logger.js";
 import messageCleanupJob from "./schedulers/messageCleanupJob.js";
 import { startCronJobs } from "./schedulers/sessionCreationJob.js";
 import { startCronJobsForScheduledDeletion } from "./schedulers/scheduledDeletionJob.js";
-import { initialSocketServer } from "./sockets/socketindex.js";
+import { initialSocketServer } from "./sockets/socketIndex.js";
 
 // Routes
 import userRouter from "./routes/userRoute.js";
@@ -58,8 +58,22 @@ let io; // Declare io for export
     app.use(helmet());
     app.use(compression());
 
-    const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
-    app.use(cors({ origin: originUrl, credentials: true }));
+    const allowedOrigins = (process.env.ORIGIN_URLS || "http://localhost:3002")
+      .split(",")
+      .map((origin) => origin.trim());
+    app.use(
+      cors({
+        origin: (origin, callback) => {
+          // Allow requests with no origin (like mobile apps or curl)
+          if (!origin) return callback(null, true);
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          return callback(new Error("Not allowed by CORS"));
+        },
+        credentials: true,
+      })
+    );
 
     app.use(
       "/images",

@@ -15,7 +15,7 @@ export const uploadFile = async (req, res) => {
     // If classId is provided, check if user has access
     if (classId) {
       const classGroup = await Conversation.findById(classId)
-      if (!classGroup || !classGroup.group.members.includes(userId)) {
+      if (!classGroup || !classGroup.participants.includes(userId)) {
         return res.status(403).json({ message: "Access denied" })
       }
     }
@@ -65,7 +65,7 @@ export const downloadFile = async (req, res) => {
     // Check if user has access to the file
     if (file.classId) {
       const classGroup = await Conversation.findById(file.classId)
-      if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+      if (!classGroup || !classGroup.participants.includes(req.user._id)) {
         return res.status(403).json({ message: "Access denied" })
       }
     } else if (file.uploadedBy.toString() !== req.user._id.toString()) {
@@ -139,7 +139,7 @@ export const getFileInfo = async (req, res) => {
     // Check if user has access
     if (file.classId) {
       const classGroup = await Conversation.findById(file.classId)
-      if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+      if (!classGroup || !classGroup.participants.includes(req.user._id)) {
         return res.status(403).json({ message: "Access denied" })
       }
     } else if (file.uploadedBy._id.toString() !== req.user._id.toString()) {
@@ -209,7 +209,7 @@ export const getClassFiles = async (req, res) => {
 
     // Check if user has access to class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 

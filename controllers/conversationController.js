@@ -294,17 +294,35 @@ export const acceptMessageRequest = async (req, res) => {
 
   try {
     const { conversationId } = req.params;
+    const { status } = req.body;
+    const userId = req.user._id;
+
+    if (status !== "accepted") {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: "Invalid status update" });
+    }
 
     // Find the conversation
-    const conversation = await Conversation.findById(conversationId).session(session);
-    console.log(conversation)
+    const conversation = await Conversation.findById(conversationId).session(
+      session
+    );
     if (!conversation) {
       await session.abortTransaction();
       session.endSession();
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // Check if already accepted
+    // Must be at index 1
+    if (conversation.participants[1].toString() !== userId.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(403)
+        .json({ message: "You are not authorized to accept this request" });
+    }
+
+    // Already accepted check
     if (conversation.status === "accepted") {
       await session.abortTransaction();
       session.endSession();
@@ -317,28 +335,25 @@ export const acceptMessageRequest = async (req, res) => {
     conversation.status = "accepted";
     await conversation.save({ session });
 
-    // Update friend lists for both users
+    // Add friends
     const [userA, userB] = conversation.participants;
 
-    // Add userB to userA's friend list
     await FriendList.updateOne(
       { user: userA },
       { $addToSet: { friends: userB } },
       { upsert: true, session }
     );
 
-    // Add userA to userB's friend list
     await FriendList.updateOne(
       { user: userB },
       { $addToSet: { friends: userA } },
       { upsert: true, session }
     );
 
-    // Commit the transaction
     await session.commitTransaction();
     session.endSession();
 
-    // Notify participants after commit
+    // Notify both participants
     conversation.participants.forEach((participant) => {
       req.io.to(participant.toString()).emit("messageRequestAccepted", {
         conversationId: conversation._id,
@@ -346,14 +361,15 @@ export const acceptMessageRequest = async (req, res) => {
       });
     });
 
-    res
-      .status(200)
-      .json({ message: "Message request accepted", conversation });
+    return res.status(200).json({
+      message: "Message request accepted",
+      conversation,
+    });
   } catch (error) {
     console.error("Error accepting message request:", error);
     await session.abortTransaction();
     session.endSession();
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -378,7 +394,6 @@ export const updateConversationThemeIndex = async (req, res) => {
   }
 };
 
-
 export const deleteConversation = async (req, res) => {
   try {
     const { id } = req.params;
@@ -398,7 +413,9 @@ export const deleteConversation = async (req, res) => {
     res.status(200).json({ message: "Conversation deleted successfully." });
   } catch (error) {
     console.error("Error deleting conversation:", error);
-    res.status(500).json({ message: "Server error. Could not delete conversation." });
+    res
+      .status(500)
+      .json({ message: "Server error. Could not delete conversation." });
   }
 };
 
@@ -435,10 +452,12 @@ export const getPendingConversationRequests = async (req, res) => {
       );
 
       // Check if the requestor (userId) is at index 0
-      const isRequestor = conversation.participants[0]._id.toString() === userId.toString();
+      const isRequestor =
+        conversation.participants[0]._id.toString() === userId.toString();
 
       // Base response object
       const response = {
+        accepter: conversation.participants[1]._id.toString(),
         conversationId: conversation._id,
         name: otherParticipant ? otherParticipant.name : null,
         image: otherParticipant ? otherParticipant.image : null,
@@ -452,7 +471,16 @@ export const getPendingConversationRequests = async (req, res) => {
       return response;
     });
 
-    res.json({ conversations: formattedConversations });
+    res.json({
+      conversations: formattedConversations,
+      totalConversations: await Conversation.countDocuments({
+        participants: userId,
+        status: "pending",
+        "group.is_group": false,
+      }),
+      page,
+      limit,
+    });
   } catch (error) {
     console.error("Error fetching pending conversations:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -481,7 +509,7 @@ export const getGroupJoinRequests = async (req, res) => {
       "group.type": "group",
       $or: [{ "group.admins": userId }, { "group.moderators": userId }],
     }).select("_id group.name group.image");
-    
+
     if (groups.length > 0) {
       query = {
         classId: { $in: groups.map((g) => g._id) },
@@ -570,25 +598,32 @@ export const getGroupJoinRequests = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 15;
     const skip = (page - 1) * limit;
-    const paginatedFlattenedRequests = flattenedRequests.slice(skip, skip + limit);
+    const paginatedFlattenedRequests = flattenedRequests.slice(
+      skip,
+      skip + limit
+    );
 
     // Re-group requests by group
     const result = [];
     const seenGroupIds = new Set();
-    paginatedFlattenedRequests.forEach(({ groupId, groupName, groupImage, request }) => {
-      const groupIdStr = groupId.toString();
-      if (!seenGroupIds.has(groupIdStr)) {
-        seenGroupIds.add(groupIdStr);
-        result.push({
-          groupId,
-          groupName,
-          groupImage,
-          requests: [],
-        });
+    paginatedFlattenedRequests.forEach(
+      ({ groupId, groupName, groupImage, request }) => {
+        const groupIdStr = groupId.toString();
+        if (!seenGroupIds.has(groupIdStr)) {
+          seenGroupIds.add(groupIdStr);
+          result.push({
+            groupId,
+            groupName,
+            groupImage,
+            requests: [],
+          });
+        }
+        const groupItem = result.find(
+          (item) => item.groupId.toString() === groupIdStr
+        );
+        groupItem.requests.push(request);
       }
-      const groupItem = result.find((item) => item.groupId.toString() === groupIdStr);
-      groupItem.requests.push(request);
-    });
+    );
 
     res.json({
       groups: result,
@@ -601,4 +636,3 @@ export const getGroupJoinRequests = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-

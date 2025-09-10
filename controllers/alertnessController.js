@@ -22,7 +22,7 @@ export const startAlertnessSession = async (req, res) => {
       classId,
       startedBy: req.user._id,
       duration,
-      totalParticipants: classGroup.group.members.length,
+      totalParticipants: classGroup.participants.length,
     })
 
     await session.save()
@@ -107,7 +107,7 @@ export const getAlertnessSessions = async (req, res) => {
 
     // Check if user has access to class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -138,7 +138,7 @@ export const getActiveSession = async (req, res) => {
 
     // Check if user has access to class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -204,7 +204,7 @@ export const getSessionStats = async (req, res) => {
 
     // Check if user has access
     const classGroup = await Conversation.findById(session.classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 

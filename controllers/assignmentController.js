@@ -40,7 +40,7 @@ export const getClassAssignments = async (req, res) => {
 
     // Check if user is member of the class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -79,7 +79,7 @@ export const getAssignmentById = async (req, res) => {
 
     // Check if user has access to this assignment
     const classGroup = await Conversation.findById(assignment.classId)
-    if (!classGroup || !classGroup.group.members.includes(req.user._id)) {
+    if (!classGroup || !classGroup.participants.includes(req.user._id)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -178,7 +178,7 @@ export const submitAssignment = async (req, res) => {
 
     // Check if user is a member of the class
     const classGroup = await Conversation.findById(classId)
-    if (!classGroup || !classGroup.group.members.includes(userId)) {
+    if (!classGroup || !classGroup.participants.includes(userId)) {
       return res.status(403).json({ message: "Access denied" })
     }
 
@@ -213,38 +213,39 @@ export const submitAssignment = async (req, res) => {
 }
 
 // Get submissions for an assignment
+
 export const getSubmissions = async (req, res) => {
   try {
-    const { id } = req.params 
-    const { page = 1, limit = 10 } = req.query
+    const { classId } = req.params; // classId
+    const { page = 1, limit = 10 } = req.query;
 
-    // For now, we'll get all submissions for a class
-    // In a full implementation, you'd filter by assignment ID
-    const submissions = await AssignmentSubmission.find({})
-      .populate("userId", "name email image")
-      .populate("markedBy", "name email")
+    // Fetch submissions filtered by classId
+    const submissions = await AssignmentSubmission.find({ classId: classId })
+      .populate("userId", "name image")
+      .populate("markedBy", "name ")
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .sort({ submittedAt: -1 })
+      .sort({ submittedAt: -1 });
 
-    const total = await AssignmentSubmission.countDocuments({})
+    const total = await AssignmentSubmission.countDocuments({ classId: classId });
 
     res.json({
       submissions,
       totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      currentPage: Number(page),
       total,
-    })
+    });
+    console.log("Submissions:", submissions);
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message })
+    res.status(500).json({ message: "Server error", error: error.message });
   }
-}
+};
 
 // Mark assignment
 export const markAssignment = async (req, res) => {
   try {
     const { submissionId } = req.params
-    const { mark, feedback } = req.body
+    const { mark, status, feedback } = req.body
 
     if (mark === undefined || mark < 0 || mark > 100) {
       return res.status(400).json({ message: "Valid mark (0-100) is required" })
@@ -262,6 +263,7 @@ export const markAssignment = async (req, res) => {
     }
 
     submission.mark = mark
+    submission.status = status || 'Approved'
     submission.feedback = feedback
     submission.markedBy = req.user._id
     submission.markedAt = new Date()
@@ -328,7 +330,7 @@ export const downloadSubmission = async (req, res) => {
 
     // Check if user has access
     const classGroup = await Conversation.findById(submission.classId)
-    const hasAccess = classGroup.group.members.includes(req.user._id)
+    const hasAccess = classGroup.participants.includes(req.user._id)
 
     if (!hasAccess) {
       return res.status(403).json({ message: "Access denied" })
