@@ -58,7 +58,7 @@ let io; // Declare io for export
     app.use(helmet());
     app.use(compression());
 
-    const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
+    const originUrl = "https://fajr.netlify.app";
     app.use(cors({ origin: originUrl, credentials: true }));
 
     app.use(
