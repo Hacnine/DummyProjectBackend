@@ -149,22 +149,13 @@ const login = async (req, res) => {
     if (!user.is_active) {
       return res.status(403).json({ message: "Account is deactivated." });
     }
-
-    // Log login metadata (optional but useful)
-    // console.log("Login attempt", {
-    //   ip: req.ip,
-    //   userAgent: req.headers["user-agent"],
-    //   user: user._id.toString(),
-    // });
-
-    // Update last_seen
     await userModel.findByIdAndUpdate(user._id, { last_seen: new Date() });
 
     // Clear old cookies
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
       path: "/",
     };
 
@@ -224,12 +215,12 @@ const logout = async (req, res) => {
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
 
     // Clear tokens from Redis

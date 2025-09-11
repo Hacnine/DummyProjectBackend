@@ -3,19 +3,24 @@ import { redisClient } from './redisClient.js';
 
 const storeToken = async (res, token, userId) => {
   const { access, refresh } = token;
-  // Store in Redis with user ID as the key
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" ? true : false,
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    path: "/",
+  };
+
+  // Store in Redis
   await redisClient.set(`access_token_${userId}`, access, { EX: 60 * 60 * 24 * 7 }); // 7 days
   await redisClient.set(`refresh_token_${userId}`, refresh, { EX: 60 * 60 * 24 * 7 });
 
   if (!res.headersSent) {
-
-    res.cookie("access_token", access, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
-    res.cookie("refresh_token", refresh, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
+    res.cookie("access_token", access, cookieOptions);
+    res.cookie("refresh_token", refresh, cookieOptions);
   } else {
-    console.error('Headers already sent');
+    console.error("Headers already sent");
   }
 };
-
 
 const getToken = async (req) => {
   const cookies = req.cookies || {}; // Fallback to empty object if req.cookies is undefined
