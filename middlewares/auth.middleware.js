@@ -51,12 +51,12 @@ const isLogout = async (req, res, next) => {
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
 
     if (access_token) {

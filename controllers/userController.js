@@ -164,7 +164,7 @@ const login = async (req, res) => {
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
       path: "/",
     };
 
@@ -224,12 +224,12 @@ const logout = async (req, res) => {
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
+      sameSite: "none",
     });
 
     // Clear tokens from Redis
