@@ -2,32 +2,37 @@ import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storeToken, getToken, removeToken } from "../utils/redisTokenStore.js";
-import { redisClient } from "../utils/redisClient.js";
 import { fileURLToPath } from "url";
 import path from "path";
 import User from "../models/userModel.js";
 import { onlineUsers } from "../sockets/onlineUserSocket.js";
 import { createUserApproval } from "../utils/userApprovalMiddleware.js";
 import AdminSettings from "../models/adminSettingsModel.js";
-import asyncHandler from 'express-async-handler';
-import { param, validationResult } from 'express-validator';
+import asyncHandler from "express-async-handler";
+import { param, validationResult } from "express-validator";
 import { Block } from "../models/blockModel.js";
 import Conversation from "../models/conversationModel.js";
+import { getRedisClient } from "../config/redisClient.js";
 
 const register = async (req, res) => {
   try {
     const settings = await AdminSettings.findOne();
     // Allow registration if settings don't exist (initial setup) or if user_registration is true
-    const isRegistrationGloballyEnabled = !settings || settings.features?.user_registration !== false;
+    const isRegistrationGloballyEnabled =
+      !settings || settings.features?.user_registration !== false;
 
     if (!isRegistrationGloballyEnabled) {
-      return res.status(400).json({ error: { message: "Registration is temporarily off." } });
+      return res
+        .status(400)
+        .json({ error: { message: "Registration is temporarily off." } });
     }
 
     const { name, email, password, gender } = req.body;
 
     if (!name || !email || !password || !gender) {
-      return res.status(400).json({ error: { message: "All fields are required." } });
+      return res
+        .status(400)
+        .json({ error: { message: "All fields are required." } });
     }
 
     // Validate password strength
@@ -38,15 +43,21 @@ const register = async (req, res) => {
     // Validate gender
     const validGenders = ["male", "female", "other"];
     if (!validGenders.includes(gender.toLowerCase())) {
-      return res.status(400).json({ error: { message: "Invalid gender value." } });
+      return res
+        .status(400)
+        .json({ error: { message: "Invalid gender value." } });
     }
 
     // Check for existing name (case-insensitive)
     const normalizedName = name.trim().toLowerCase();
-    const existingName = await userModel.findOne({ name: new RegExp(`^${normalizedName}$`, "i") });
+    const existingName = await userModel.findOne({
+      name: new RegExp(`^${normalizedName}$`, "i"),
+    });
     if (existingName) {
       return res.status(400).json({
-        error: { message: `'${name}' name is already taken. Choose a different name.` },
+        error: {
+          message: `'${name}' name is already taken. Choose a different name.`,
+        },
       });
     }
 
@@ -54,17 +65,27 @@ const register = async (req, res) => {
     const normalizedEmail = email.toLowerCase();
     const existingUser = await userModel.findOne({ email: normalizedEmail });
     if (existingUser) {
-      return res.status(400).json({ error: {message: `'${email}' name is already taken. Choose a different email address.` } });
+      return res
+        .status(400)
+        .json({
+          error: {
+            message: `'${email}' name is already taken. Choose a different email address.`,
+          },
+        });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = new userModel({
-      name:normalizedName,
+      name: normalizedName,
       email: normalizedEmail,
       password: passwordHash,
       gender: gender.toLowerCase(),
-      image:`${gender.toLowerCase() === "male"? "/images/avatar/default-avatar.svg":"/images/avatar/womanav1.svg"}`,
+      image: `${
+        gender.toLowerCase() === "male"
+          ? "/images/avatar/default-avatar.svg"
+          : "/images/avatar/womanav1.svg"
+      }`,
       // If no settings exist, make the first user an admin
       isAdmin: !settings,
     });
@@ -96,7 +117,10 @@ const register = async (req, res) => {
         });
       } catch (approvalError) {
         return res.status(500).json({
-          error: { message: "Failed to create approval request.", details: approvalError.message },
+          error: {
+            message: "Failed to create approval request.",
+            details: approvalError.message,
+          },
         });
       }
     } else {
@@ -163,8 +187,9 @@ const login = async (req, res) => {
     res.clearCookie("refresh_token", cookieOptions);
 
     // Clear old Redis tokens
-    await redisClient.del(`access_token_${user._id}`);
-    await redisClient.del(`refresh_token_${user._id}`);
+    const redis = getRedisClient();
+    await redis.del(`access_token_${user._id}`);
+    await redis.del(`refresh_token_${user._id}`);
 
     // Generate new tokens
     const accessToken = jwt.sign(
@@ -225,7 +250,7 @@ const logout = async (req, res) => {
 
     // Clear tokens from Redis
     if (access_token || refresh_token) {
-      await removeToken( res, req );
+      await removeToken(res, req);
     }
 
     res.status(200).json({ message: "Logged out successfully" });
@@ -336,26 +361,27 @@ export const getUserInfo = asyncHandler(async (req, res) => {
 
   // Ensure the userId is valid
   if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
-    return res.status(400).json({ message: 'Invalid user ID' });
+    return res.status(400).json({ message: "Invalid user ID" });
   }
 
   // Fetch user with specific fields only
-  const user = await User.findById(userId).select('name email bio image role is_active last_seen');
+  const user = await User.findById(userId).select(
+    "name email bio image role is_active last_seen"
+  );
 
   if (!user) {
-    return res.status(404).json({ message: 'User not found' });
+    return res.status(404).json({ message: "User not found" });
   }
 
   res.status(200).json({
-      name: user.name,
-      email: user.email,
-      bio: user.bio || '',
-      image: user.image || '',
-      role: user.role,
-      is_active: user.is_active,
-      last_seen: user.last_seen,
-    },
-  );
+    name: user.name,
+    email: user.email,
+    bio: user.bio || "",
+    image: user.image || "",
+    role: user.role,
+    is_active: user.is_active,
+    last_seen: user.last_seen,
+  });
 });
 
 const updateUserInfo = async (req, res) => {
@@ -466,7 +492,6 @@ export const updateUserThemeIndex = async (req, res) => {
   }
 };
 
-
 // Update user name
 export const updateName = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
@@ -480,22 +505,22 @@ export const updateName = asyncHandler(async (req, res) => {
   // Check if name already exists
   const existingUser = await User.findOne({ name, _id: { $ne: userId } });
   if (existingUser) {
-    return res.status(400).json({ message: 'Name already taken' });
+    return res.status(400).json({ message: "Name already taken" });
   }
 
   const user = await User.findByIdAndUpdate(
     userId,
     { name, updatedAt: Date.now() },
-    { new: true, select: 'name email' }
+    { new: true, select: "name email" }
   );
 
   if (!user) {
-    return res.status(404).json({ message: 'User not found' });
+    return res.status(404).json({ message: "User not found" });
   }
 
   res.status(200).json({
-    message: 'Name updated successfully',
-    user: { name: user.name, email: user.email }
+    message: "Name updated successfully",
+    user: { name: user.name, email: user.email },
   });
 });
 
@@ -512,22 +537,22 @@ export const updateEmail = asyncHandler(async (req, res) => {
   // Check if email already exists
   const existingUser = await User.findOne({ email, _id: { $ne: userId } });
   if (existingUser) {
-    return res.status(400).json({ message: 'Email already taken' });
+    return res.status(400).json({ message: "Email already taken" });
   }
 
   const user = await User.findByIdAndUpdate(
     userId,
     { email, updatedAt: Date.now() },
-    { new: true, select: 'name email' }
+    { new: true, select: "name email" }
   );
 
   if (!user) {
-    return res.status(404).json({ message: 'User not found' });
+    return res.status(404).json({ message: "User not found" });
   }
 
   res.status(200).json({
-    message: 'Email updated successfully',
-    user: { name: user.name, email: user.email }
+    message: "Email updated successfully",
+    user: { name: user.name, email: user.email },
   });
 });
 
@@ -544,19 +569,18 @@ export const updatePassword = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     userId,
     { password, updatedAt: Date.now() },
-    { new: true, select: 'name email' }
+    { new: true, select: "name email" }
   );
 
   if (!user) {
-    return res.status(404).json({ message: 'User not found' });
+    return res.status(404).json({ message: "User not found" });
   }
 
   res.status(200).json({
-    message: 'Password updated successfully',
-    user: { name: user.name, email: user.email }
+    message: "Password updated successfully",
+    user: { name: user.name, email: user.email },
   });
 });
-
 
 //  Helper: Add user to conversation blockList
 const addToConversationBlockList = async (
@@ -687,12 +711,4 @@ export const unblockUser = async (req, res) => {
   }
 };
 
-
-export {
-  register,
-  login,
-  logout,
-  getAllUsers,
-  updateUserInfo,
-  refreshToken,
-};
+export { register, login, logout, getAllUsers, updateUserInfo, refreshToken };

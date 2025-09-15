@@ -7,6 +7,7 @@ const storeToken = async (res, token, userId) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" ? true : false,
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
   };
 
@@ -52,26 +53,30 @@ const getToken = async (req) => {
 const removeToken = async (res, req) => {
   try {
     const { access_token, refresh_token } = req.cookies;
-    console.log(access_token, refresh_token)
-    if (!access_token || !refresh_token) {
+    if (!access_token && !refresh_token) {
       return res.status(400).json({ message: "No tokens found" });
     }
 
-    const decoded = jwt.verify(access_token, process.env.ACCESS_TOKEN_SECRET);
-    const userId = decoded.id;
+    let userId = null;
+    if (access_token) {
+      const decoded = jwt.decode(access_token); // decode instead of verify
+      userId = decoded?.id;
+    }
 
-    // Delete tokens from Redis using user ID
-    await redisClient.del(`access_token_${userId}`);
-    await redisClient.del(`refresh_token_${userId}`);
+    if (userId) {
+      await redisClient.del(`access_token_${userId}`);
+      await redisClient.del(`refresh_token_${userId}`);
+    }
 
     if (!res.headersSent) {
       res.clearCookie("access_token");
       res.clearCookie("refresh_token");
-    } else {
-      console.error("Headers already sent");
     }
+
+    return res.json({ message: "Logout successful" });
   } catch (error) {
     console.error("Error during logout:", error.message);
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
