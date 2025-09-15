@@ -5,7 +5,8 @@ import User from "../models/userModel.js";
 const isLogin = async (req, res, next) => {
   try {
     const { access_token, refresh_token } = await getToken(req);
-// console.log(access_token)
+    console.log('Tokens:', { access_token, refresh_token }); // Debug
+
     if (!access_token) {
       return res.status(401).json({ message: "Unauthorized: Please log in." });
     }
@@ -44,33 +45,20 @@ const isLogin = async (req, res, next) => {
   }
 };
 
+
 const isLogout = async (req, res, next) => {
   try {
-    const { access_token, refresh_token } = await getToken(req);
-    // Clear cookies and Redis tokens regardless of token validity
-    res.clearCookie("access_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
+    // Clear tokens and session
+    await removeToken(res, req);
+    req.session.destroy((err) => {
+      if (err) console.error("Session destroy error:", { message: err.message, stack: err.stack });
     });
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
-    });
-
-    if (access_token) {
-      // Optionally, invalidate tokens in Redis
-      // Assuming you have a function to delete tokens in redisTokenStore.js
-      await removeToken(res, req);
-    }
-
-    // Proceed to login regardless of previous token state
-     next(); // Always move forward
+    next();
   } catch (error) {
-    console.error("isLogout error:", error.message);
+    console.error("isLogout error:", { message: error.message, stack: error.stack });
     next(); // Never block login
   }
 };
+
 
 export { isLogin, isLogout };
