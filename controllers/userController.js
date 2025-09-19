@@ -224,6 +224,8 @@ const login = async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       user: safeUser,
+      access: accessToken, 
+      refresh: refreshToken
     });
   } catch (error) {
     console.error("Login error:", error.message);
