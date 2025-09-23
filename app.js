@@ -10,7 +10,6 @@ import session from "express-session";
 import { RedisStore } from "connect-redis";
 import pinoHttp from "pino-http";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 
 // Config & utils
 import { connectDB } from "./db/connectdb.js";
@@ -20,22 +19,7 @@ import messageCleanupJob from "./schedulers/messageCleanupJob.js";
 import { startCronJobs } from "./schedulers/sessionCreationJob.js";
 import { startCronJobsForScheduledDeletion } from "./schedulers/scheduledDeletionJob.js";
 import { initialSocketServer } from "./sockets/socketIndex.js";
-
-// Routes
-import userRouter from "./routes/userRoute.js";
-import conversationRouter from "./routes/conversationRoute.js";
-import messageRouter from "./routes/messageRoute.js";
-import quickMessageRouter from "./routes/quickMessageRoute.js";
-import quickLessonRouter from "./routes/quickLessonRoute.js";
-import adminRouter from "./routes/adminRoutes.js";
-import adminUserRouter from "./routes/adminUserRoutes.js";
-import classRoutes from "./routes/classRoutes.js";
-import assignmentRoutes from "./routes/assignmentRoutes.js";
-import attendanceRoutes from "./routes/attendanceRoutes.js";
-import alertnessRoutes from "./routes/alertnessRoutes.js";
-import notificationRoutes from "./routes/notificationRoutes.js";
-import fileRoutes from "./routes/fileRoutes.js";
-import socialRoutes from "./routes/socialRoutes.js";
+import routeIndex from "./routes/routeIndex.js";
 import { apiLimiter } from "./middlewares/rateLimiter.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -99,29 +83,8 @@ let io; // Declare io for export
     };
 
     // Routes
-    app.use("/user", apiLimiter, attachIo, userRouter);
-    app.use("/conversations", apiLimiter, attachIo, conversationRouter);
-    app.use("/messages", apiLimiter, attachIo, messageRouter);
-    app.use("/quick-messages", apiLimiter, attachIo, quickMessageRouter);
-    app.use("/quick-lessons", apiLimiter, quickLessonRouter);
-    app.use("/admin", apiLimiter, adminRouter);
-    app.use("/admin/user-management", apiLimiter, attachIo, adminUserRouter);
-    app.use("/class-group/classes", apiLimiter, attachIo, classRoutes);
-    app.use("/class-group/assignments", apiLimiter, attachIo, assignmentRoutes);
-    app.use("/class-group/attendance", apiLimiter, attachIo, attendanceRoutes);
-    app.use("/class-group/alertness", apiLimiter, attachIo, alertnessRoutes);
-    app.use(
-      "/class-group/notification",
-      apiLimiter,
-      attachIo,
-      notificationRoutes
-    );
-    app.use("/class-group/files", apiLimiter, fileRoutes);
-    app.use("/social", apiLimiter, attachIo, socialRoutes);
-
-    // Health check
-    app.get("/health", (req, res) => res.status(200).send("OK"));
-
+    app.use("/", apiLimiter, attachIo, routeIndex);
+   
     // 404
     app.use((req, res) =>
       res.status(404).json({ success: false, message: "Route not found" })
