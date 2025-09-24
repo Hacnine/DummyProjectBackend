@@ -8,7 +8,7 @@ const noticeRouter = express.Router();
 // Routes
 noticeRouter.post("/", requireAuth, createNotice);
 noticeRouter.get("/", requireAuth, getNotices);
-noticeRouter.put("/:noticeId", requireAuth, updateNotice);
+noticeRouter.patch("/:noticeId", requireAuth, updateNotice);
 noticeRouter.delete("/:noticeId", requireAuth, deleteNotice);
 
 export default noticeRouter;

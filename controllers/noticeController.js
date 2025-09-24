@@ -85,12 +85,11 @@ export const getNotices = async (req, res) => {
   }
 };
 
-// Update a notice
 export const updateNotice = async (req, res) => {
   try {
     const { noticeId } = req.params;
     const { title, content, targetAudience, eventType, eventDate, location } = req.body;
-    const userId = req.user._id;
+    const userId = req.user._id;console.log("userId", userId)
 
     const notice = await Notice.findById(noticeId);
     if (!notice) {
@@ -103,22 +102,25 @@ export const updateNotice = async (req, res) => {
 
     // Validate required fields if updating
     const updatedEventType = eventType || notice.eventType;
-    const eventSpecificTypes = ["holiday", "exam", "meeting", "special"];
+    const eventSpecificTypes = ["general", "holiday", "exam", "meeting", "special", "announcement"];
     if (eventSpecificTypes.includes(updatedEventType) && !eventDate && !notice.eventDate) {
-      return res.status(400).json({ message: "eventDate is required for event-specific notices" });
+      return res
+        .status(400)
+        .json({ message: "eventDate is required for event-specific notices" });
     }
 
     // Update recipients if targetAudience changes
     let recipients = notice.recipients;
-    if (targetAudience && targetAudience.length > 0) {
-      if (targetAudience.includes("all")) {
+    if (targetAudience) {
+      if (targetAudience === "all") {
         recipients = await User.find().select("_id");
       } else {
-        recipients = await User.find({ role: { $in: targetAudience } }).select("_id");
+        recipients = await User.find({ role: targetAudience }).select("_id");
       }
       recipients = recipients.map((user) => user._id);
     }
 
+    // Update fields
     notice.title = title || notice.title;
     notice.content = content || notice.content;
     notice.targetAudience = targetAudience || notice.targetAudience;
