@@ -15,6 +15,7 @@ import notificationRoutes from "./notificationRoutes.js";
 import fileRoutes from "./fileRoutes.js";
 import socialRoutes from "./socialRoutes.js";
 import noticeRouter from "./noticeRoutes.js";
+import siteSecurityRouter from "./siteSecurityRoutes.js";
 
 const apiRoute = Router();
 
@@ -30,14 +31,10 @@ apiRoute.use("/class-group/classes", classRoutes);
 apiRoute.use("/class-group/assignments", assignmentRoutes);
 apiRoute.use("/class-group/attendance", attendanceRoutes);
 apiRoute.use("/class-group/alertness", alertnessRoutes);
-apiRoute.use(
-  "/class-group/notification",
-  
-  
-  notificationRoutes
-);
+apiRoute.use("/class-group/notification", notificationRoutes);
 apiRoute.use("/class-group/files",  fileRoutes);
 apiRoute.use("/social", socialRoutes);
+apiRoute.use("/site-security", siteSecurityRouter);
 
 // Health check
 apiRoute.get("/health", (req, res) => res.status(200).send("OK"));
