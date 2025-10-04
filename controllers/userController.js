@@ -65,13 +65,11 @@ const register = async (req, res) => {
     const normalizedEmail = email.toLowerCase();
     const existingUser = await userModel.findOne({ email: normalizedEmail });
     if (existingUser) {
-      return res
-        .status(400)
-        .json({
-          error: {
-            message: `'${email}' name is already taken. Choose a different email address.`,
-          },
-        });
+      return res.status(400).json({
+        error: {
+          message: `'${email}' name is already taken. Choose a different email address.`,
+        },
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -224,8 +222,8 @@ const login = async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       user: safeUser,
-      access: accessToken, 
-      refresh: refreshToken
+      access: accessToken,
+      refresh: refreshToken,
     });
   } catch (error) {
     console.error("Login error:", error.message);
@@ -567,10 +565,10 @@ export const updatePassword = asyncHandler(async (req, res) => {
 
   const { password } = req.body;
   const userId = req.user._id;
-
+  const passwordHash = await bcrypt.hash(password, 10);
   const user = await User.findByIdAndUpdate(
     userId,
-    { password, updatedAt: Date.now() },
+    { passwordHash, updatedAt: Date.now() },
     { new: true, select: "name email" }
   );
 
