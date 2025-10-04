@@ -568,7 +568,7 @@ export const updatePassword = asyncHandler(async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await User.findByIdAndUpdate(
     userId,
-    { passwordHash, updatedAt: Date.now() },
+    { password: passwordHash, updatedAt: Date.now() },
     { new: true, select: "name email" }
   );
 
