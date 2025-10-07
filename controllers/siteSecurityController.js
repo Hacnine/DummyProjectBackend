@@ -39,47 +39,51 @@ export const createSiteSecurityMessage = async (req, res) => {
 // Verify site security messages
 export const verifySiteSecurityMessage = async (req, res) => {
   try {
-    const { goodMessage, badMessage } = req.body;
+    const { message } = req.body;
 
-    // Validate input fields
-    if (!goodMessage || !badMessage) {
+    // Validate input field
+    if (!message) {
       return res.status(400).json({
         success: false,
-        message: 'Both goodMessage and badMessage are required for verification'
+        message: "Message is required for verification",
       });
     }
 
     // Find matching security message in database
     const storedMessage = await SiteSecurityMessage.findOne({
-      goodMessage,
-      badMessage
+      $or: [{ goodMessage: message }, { badMessage: message }],
     });
 
-    // Check if messages match
+    // Check if message exists
     if (!storedMessage) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid security messages'
+        message: "Invalid security message",
       });
     }
+
+    // Determine if the message is good or bad
+    const isGoodMessage = storedMessage.goodMessage === message;
+    const messageType = isGoodMessage ? "good" : "bad";
 
     // If verification successful
     res.status(200).json({
       success: true,
-      message: 'Security messages verified successfully',
+      message: "Security message verified successfully",
       data: {
         id: storedMessage._id,
-        verifiedAt: new Date()
-      }
+        verifiedAt: new Date(),
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error verifying security messages',
-      error: error.message
+      message: "Error verifying security message",
+      error: error.message,
     });
   }
 };
+
 
 // Get site security messages
 export const getSiteSecurityMessages = async (req, res) => {
