@@ -105,7 +105,7 @@ export const startCronJobs = async () => {
     classes.forEach((classGroup) => {
       if (classGroup.group.type === "classroom") {
         scheduleSessionCronForClass(classGroup);
-        console.log(`Cron job scheduled for class ${classGroup._id} (${classGroup.group.name})`);
+        // console.log(`Cron job scheduled for class ${classGroup._id} (${classGroup.group.name})`);
       } else {
         console.log(`Skipping cron job for non-classroom group ${classGroup._id} (${classGroup.group.name})`);
       }

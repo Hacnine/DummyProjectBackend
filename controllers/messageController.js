@@ -15,6 +15,11 @@ import {
 } from "../utils/controller-utils/messageControllerUtils.js";
 import mongoose from "mongoose";
 import { emitConversationUpdate } from "../sockets/conversationSocket.js";
+import { 
+  enhanceMessageWithZeroKnowledgeEncryption,
+  shouldMessageBeEncrypted,
+  logEncryptionActivity 
+} from "../services/zeroKnowledgeEncryptionService.js";
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
@@ -78,16 +83,30 @@ export const sendFileMessage = async (req, res) => {
     if (uniqueTypes.length === 1) messageType = uniqueTypes[0];
     else if (uniqueTypes.length > 1) messageType = "mixed";
 
-    const newMessage = await Message.create({
+    // Log activity without revealing encryption methods
+    logEncryptionActivity('message_send', resolvedConversationId, {
+      participantsCount: conversation.participants.length,
+      status: conversation.keyExchange?.status || 'none'
+    });
+
+    // Prepare base message data
+    const baseMessageData = {
       sender: userId,
       receiver: finalReceiver,
       conversation: resolvedConversationId,
-      text: resolvedText,
       media: mediaFiles,
       messageType,
-      status: "sent", // Ensure status is set
+      status: "sent",
       scheduledDeletionTime: computeDeletionTime(conversation),
-    });
+    };
+
+    // Enhance message with zero-knowledge encryption handling
+    const messageDataWithEncryption = enhanceMessageWithZeroKnowledgeEncryption(
+      baseMessageData,
+      resolvedText
+    );
+
+    const newMessage = await Message.create(messageDataWithEncryption);
 
     await updateConversationState(
       conversation,
@@ -182,15 +201,29 @@ export const sendTextMessage = async ({
     );
     const finalReceiver = receiver || otherParticipant;
 
-    const newMessage = await Message.create({
+    // Log activity without revealing encryption methods
+    logEncryptionActivity('text_message_send', resolvedConversationId, {
+      participantsCount: conversation.participants.length,
+      status: conversation.keyExchange?.status || 'none'
+    });
+
+    // Prepare base message data
+    const baseMessageData = {
       sender,
       receiver: finalReceiver,
-      text,
       conversation: resolvedConversationId,
-      messageType: "text", // Explicitly set messageType
-      status: "sent", // Ensure status is set
+      messageType: "text",
+      status: "sent",
       scheduledDeletionTime: computeDeletionTime(conversation),
-    });
+    };
+
+    // Enhance message with zero-knowledge encryption handling
+    const messageDataWithEncryption = enhanceMessageWithZeroKnowledgeEncryption(
+      baseMessageData,
+      text
+    );
+
+    const newMessage = await Message.create(messageDataWithEncryption);
 
     await updateConversationState(conversation, sender, text);
 

@@ -87,6 +87,21 @@ const conversationSchema = new Schema(
         blockedAt: { type: Date, default: Date.now },
       },
     ],
+
+    // Conversation-specific encryption keys (per participant)
+    keyExchange: {
+      status: {
+        type: String,
+        enum: ["none", "pending", "partial", "complete"],
+        default: "none",
+      },
+      participants: {
+        type: Map,
+        of: Schema.Types.Mixed, // Store objects with: publicKey, keyId, keyVersion, exchangedAt, lastRotated
+      },
+      createdAt: { type: Date, default: null },
+      lastActivity: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );
@@ -100,7 +115,8 @@ conversationSchema.pre("save", function (next) {
   if (
     this.group &&
     this.group.type === "group" &&
-    (!this.group.image || this.group.image === "/images/cover/default-cover.jpg")
+    (!this.group.image ||
+      this.group.image === "/images/cover/default-cover.jpg")
   ) {
     this.group.image = "/images/cover/default-group.png";
   }

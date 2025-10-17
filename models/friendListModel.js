@@ -17,6 +17,6 @@ const friendListSchema = new Schema(
   { timestamps: true }
 );
 
-friendListSchema.index({ user: 1 }, { unique: true });
+
 
 export const FriendList = mongoose.model("FriendList", friendListSchema);

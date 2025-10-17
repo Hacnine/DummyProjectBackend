@@ -31,6 +31,4 @@ const postSchema = new Schema(
   { timestamps: true }
 );
 
-postSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
-
 export default mongoose.model('Post', postSchema);

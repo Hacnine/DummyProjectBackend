@@ -25,6 +25,12 @@ const messageSchema = new Schema(
       default: null,
     },
 
+    // Zero-knowledge encryption (no algorithm disclosure)
+    isEncrypted: {
+      type: Boolean,
+      default: false,
+    },
+
     messageType: {
       type: String,
       enum: [

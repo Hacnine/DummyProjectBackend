@@ -82,10 +82,10 @@ export const emitConversationUpdate = async (io, conversationId) => {
         formattedConversation
       );
 
-      console.log(
-        `Emitted to user_${user._id} for convo ${conversationId}:`,
-        formattedConversation
-      );
+      // console.log(
+      //   `Emitted to user_${user._id} for convo ${conversationId}:`,
+      //   formattedConversation
+      // );
     }
   } catch (err) {
     console.error("Error emitting conversation update:", err);
