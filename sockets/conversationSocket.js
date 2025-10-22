@@ -8,11 +8,9 @@ import { formatConversation } from "../utils/controller-utils/conversationUtils.
 import { incrementUnreadRequest, resetUnreadRequests } from "../utils/controller-utils/unreadCountUtils.js";
 
 export const registerConversationHandlers = (io, socket) => {
-  console.log("Conversation socket registered for:", socket.user.id);
 
   socket.on("join_conversations_room", () => {
     socket.join(`user_${socket.user.id}`);
-    console.log(`User ${socket.user.id} joined room: user_${socket.user.id}`);
   });
 
   // Reset specific request type dynamically

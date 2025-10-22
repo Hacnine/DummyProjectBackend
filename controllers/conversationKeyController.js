@@ -3,11 +3,29 @@ import { isValidObjectId } from "mongoose";
 
 // Exchange public key for a specific conversation
 export const exchangeConversationKey = async (req, res) => {
+
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
-    const { publicKey } = req.body;
 
+    if (typeof req.body === 'string') {
+    publicKey = req.body;
+  } else if (Buffer.isBuffer(req.body)) {
+    publicKey = req.body.toString();
+  } else if (typeof req.body === 'object' && req.body.publicKey) {
+    publicKey = req.body.publicKey;
+  } else {
+    publicKey = undefined;
+  }
+  // Optionally validate publicKey
+  if (!publicKey || typeof publicKey !== 'string') {
+
+    return res.status(400).json({
+      success: false,
+      message: 'Public key is required and must be a string'
+    });
+  }
+// console.log(conversationId)
     if (!isValidObjectId(conversationId)) {
       return res.status(400).json({
         success: false,
@@ -15,24 +33,6 @@ export const exchangeConversationKey = async (req, res) => {
       });
     }
 
-    if (!publicKey || typeof publicKey !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Public key is required and must be a string"
-      });
-    }
-
-    // Validate base64 format
-    try {
-      atob(publicKey);
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid public key format (must be base64)"
-      });
-    }
-
-    // Find conversation and verify user is participant
     const conversation = await Conversation.findById(conversationId);
     
     if (!conversation) {
@@ -41,13 +41,6 @@ export const exchangeConversationKey = async (req, res) => {
         message: "Conversation not found"
       });
     }
-
-    console.log('🔍 Found conversation:', {
-      id: conversation._id,
-      participantsCount: conversation.participants?.length,
-      hasKeyExchange: !!conversation.keyExchange,
-      keyExchangeStatus: conversation.keyExchange?.status
-    });
 
     // Check if user is participant
     const isParticipant = conversation.participants.some(
@@ -61,14 +54,13 @@ export const exchangeConversationKey = async (req, res) => {
       });
     }
 
-    console.log('✅ User is participant');
 
     // Generate unique key identifier
     const keyId = `key_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Initialize keyExchange if not exists
     if (!conversation.keyExchange) {
-      console.log('🆕 Initializing keyExchange object');
+
       conversation.keyExchange = {
         status: "none",
         participants: new Map(),
@@ -79,15 +71,9 @@ export const exchangeConversationKey = async (req, res) => {
 
     // Ensure participants Map exists
     if (!conversation.keyExchange.participants) {
-      console.log('🆕 Initializing participants Map');
+
       conversation.keyExchange.participants = new Map();
     }
-
-    console.log('📋 Current keyExchange state:', {
-      status: conversation.keyExchange.status,
-      participantsMapSize: conversation.keyExchange.participants?.size || 0,
-      participantsMapType: conversation.keyExchange.participants?.constructor?.name
-    });
 
     // Get current version or start at 1
     const currentParticipant = conversation.keyExchange.participants.get(userId.toString());
@@ -122,16 +108,9 @@ export const exchangeConversationKey = async (req, res) => {
     conversation.markModified('keyExchange');
     conversation.markModified('keyExchange.participants');
 
-    console.log('💾 Saving conversation with keyExchange:', {
-      conversationId,
-      userId: userId.toString(),
-      participantsMapSize: conversation.keyExchange.participants.size,
-      status: conversation.keyExchange.status
-    });
-
     await conversation.save();
 
-    console.log('✅ Conversation saved successfully');
+  // console.log('✅ Conversation saved successfully');
 
     res.status(200).json({
       success: true,
@@ -177,11 +156,6 @@ export const getParticipantKey = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { conversationId, userId } = req.params;
-    console.log('🔍 getParticipantKey request:', {
-      conversationId,
-      requestedUserId: userId,
-      currentUserId: currentUserId.toString()
-    });
 
     if (!isValidObjectId(conversationId) || !isValidObjectId(userId)) {
       return res.status(400).json({
@@ -195,20 +169,13 @@ export const getParticipantKey = async (req, res) => {
       .populate('participants', '_id name');
     
     if (!conversation) {
-      console.log('❌ Conversation not found');
+
       return res.status(404).json({
         success: false,
         message: "Conversation not found"
       });
     }
 
-    console.log('✅ Conversation found:', {
-      id: conversation._id,
-      participantsCount: conversation.participants?.length,
-      hasKeyExchange: !!conversation.keyExchange,
-      keyExchangeStatus: conversation.keyExchange?.status,
-      participantsWithKeys: conversation.keyExchange?.participants?.size || 0
-    });
 
     // Check if current user is participant
     const isCurrentUserParticipant = conversation.participants.some(
@@ -216,7 +183,7 @@ export const getParticipantKey = async (req, res) => {
     );
 
     if (!isCurrentUserParticipant) {
-      console.log('❌ Current user is not a participant');
+  console.log('❌ Current user is not a participant');
       return res.status(403).json({
         success: false,
         message: "You are not a participant in this conversation"
@@ -229,7 +196,7 @@ export const getParticipantKey = async (req, res) => {
     );
 
     if (!targetUser) {
-      console.log('❌ Requested user is not a participant');
+  console.log('❌ Requested user is not a participant');
       return res.status(404).json({
         success: false,
         message: "Requested user is not a participant in this conversation"
@@ -239,23 +206,14 @@ export const getParticipantKey = async (req, res) => {
     // Get user's public key for this conversation
     const userKeyData = conversation.keyExchange?.participants?.get(userId.toString());
 
-    console.log('🔑 Looking for key:', {
-      userId: userId.toString(),
-      hasKeyExchange: !!conversation.keyExchange,
-      hasParticipantsMap: !!conversation.keyExchange?.participants,
-      participantsMapKeys: conversation.keyExchange?.participants ? Array.from(conversation.keyExchange.participants.keys()) : [],
-      userKeyData: userKeyData ? 'Found' : 'Not found'
-    });
 
     if (!userKeyData || !userKeyData.publicKey) {
-      console.log('❌ No public key found for user');
+  console.log('❌ No public key found for user');
       return res.status(404).json({
         success: false,
         message: "No public key found for this user in this conversation"
       });
     }
-
-    console.log('✅ Public key found, returning to client');
 
     res.status(200).json({
       success: true,
@@ -287,7 +245,6 @@ export const getConversationKeys = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { conversationId } = req.params;
-
     if (!isValidObjectId(conversationId)) {
       return res.status(400).json({
         success: false,
@@ -381,16 +338,6 @@ export const rotateConversationKey = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "New public key is required and must be a string"
-      });
-    }
-
-    // Validate base64 format
-    try {
-      atob(newPublicKey);
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid public key format (must be base64)"
       });
     }
 

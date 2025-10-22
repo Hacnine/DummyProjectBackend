@@ -11,6 +11,7 @@ import {
 
 export const registerChatHandlers = (io, socket) => {
   socket.on("joinRoom", (conversationId) => {
+    // console.log("Socket joining room:", { socketId: socket.id, conversationId });
     socket.join(conversationId);
   });
 
@@ -21,7 +22,7 @@ export const registerChatHandlers = (io, socket) => {
   socket.on(
     "sendMessage",
     async ({ conversationId, sender, receiver, text, clientTempId }) => {
-      console.log(clientTempId);
+      console.log("Received sendMessage:", { conversationId, sender, receiver, text: text?.substring(0, 50), clientTempId });
       if (!sender) {
         console.error("Invalid sender for sendMessage");
         return;

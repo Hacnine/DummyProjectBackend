@@ -62,7 +62,7 @@ export const startCronJobs = async () => {
   try {
     // Fetch all classrooms to reschedule cron jobs
     const classes = await Conversation.find({ "group.type": "classroom" });
-    console.log(`Found ${classes.length} classes to schedule cron jobs`);
+    // console.log(`Found ${classes.length} classes to schedule cron jobs`);
 
     // Create sessions for today if missed (e.g., server was down at startTime)
     for (const classGroup of classes) {
