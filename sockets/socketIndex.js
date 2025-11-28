@@ -11,10 +11,10 @@ import { registerConversationActiveUsersHandlers } from "./conversationActiveUse
 import { registerConversationHandlers } from "./conversationSocket.js";
 
 export const initialSocketServer = async (server, redis) => {
-  const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
+  const allowedOrigins = process.env.ORIGIN_URL.split(',').map(s => s.trim());
   const io = new Server(server, {
     cors: {
-      origin: originUrl,
+      origin: allowedOrigins,
       credentials: true,
     },
   });
