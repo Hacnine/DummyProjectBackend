@@ -8,15 +8,18 @@ export const exchangeConversationKey = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.params;
 
+    // Ensure publicKey is declared before assignment to avoid ReferenceError
+    let publicKey;
+
     if (typeof req.body === 'string') {
-    publicKey = req.body;
-  } else if (Buffer.isBuffer(req.body)) {
-    publicKey = req.body.toString();
-  } else if (typeof req.body === 'object' && req.body.publicKey) {
-    publicKey = req.body.publicKey;
-  } else {
-    publicKey = undefined;
-  }
+      publicKey = req.body;
+    } else if (Buffer.isBuffer(req.body)) {
+      publicKey = req.body.toString();
+    } else if (typeof req.body === 'object' && req.body.publicKey) {
+      publicKey = req.body.publicKey;
+    } else {
+      publicKey = undefined;
+    }
   // Optionally validate publicKey
   if (!publicKey || typeof publicKey !== 'string') {
 
@@ -275,17 +278,35 @@ export const getConversationKeys = async (req, res) => {
       });
     }
 
-    // Collect all participants' keys
+    // Collect all participants' keys EXCEPT the current user.
+    // Return as an array suitable for group messaging (no userName required).
     const participantKeys = [];
-    
-    if (conversation.keyExchange?.participants) {
-      for (const [userId, keyData] of conversation.keyExchange.participants) {
-        const participant = conversation.participants.find(p => p._id.toString() === userId);
-        
-        if (participant && keyData.publicKey) {
+
+    const participantsMap = conversation.keyExchange?.participants;
+
+    if (participantsMap) {
+      // Support both Map (when stored that way) and plain object
+      if (participantsMap instanceof Map) {
+        for (const [userId, keyData] of participantsMap.entries()) {
+          if (userId === currentUserId.toString()) continue; // skip self
+          if (!keyData || !keyData.publicKey) continue;
+
           participantKeys.push({
             userId: userId,
-            userName: participant.name,
+            publicKey: keyData.publicKey,
+            keyId: keyData.keyId,
+            keyVersion: keyData.keyVersion,
+            exchangedAt: keyData.exchangedAt,
+            lastRotated: keyData.lastRotated
+          });
+        }
+      } else if (typeof participantsMap === 'object') {
+        for (const [userId, keyData] of Object.entries(participantsMap)) {
+          if (userId === currentUserId.toString()) continue; // skip self
+          if (!keyData || !keyData.publicKey) continue;
+
+          participantKeys.push({
+            userId: userId,
             publicKey: keyData.publicKey,
             keyId: keyData.keyId,
             keyVersion: keyData.keyVersion,
@@ -303,6 +324,7 @@ export const getConversationKeys = async (req, res) => {
         conversationId: conversationId,
         exchangeStatus: conversation.keyExchange?.status || "none",
         totalParticipants: conversation.participants.length,
+        // participantsWithKeys here refers to OTHER participants (excluding the requester)
         participantsWithKeys: participantKeys.length,
         keys: participantKeys,
         createdAt: conversation.keyExchange?.createdAt,
