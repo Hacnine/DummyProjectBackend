@@ -42,8 +42,8 @@ let io; // Declare io for export
     app.use(helmet());
     app.use(compression());
 
-    const originUrl = process.env.ORIGIN_URL || "http://localhost:3002";
-    app.use(cors({ origin: originUrl, credentials: true }));
+    const allowedOrigins = process.env.ORIGIN_URL.split(',').map(s => s.trim());
+    app.use(cors({ origin: allowedOrigins, credentials: true }));
 
     app.use(
       "/images",
