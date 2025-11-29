@@ -80,16 +80,50 @@ export const exchangeConversationKey = async (req, res) => {
 
     // Get current version or start at 1
     const currentParticipant = conversation.keyExchange.participants.get(userId.toString());
-    const currentVersion = currentParticipant ? currentParticipant.keyVersion : 0;
+    let currentVersion = 0;
+    let keyHistory = [];
 
-    // Update user's public key for this conversation
-    conversation.keyExchange.participants.set(userId.toString(), {
+    if (currentParticipant) {
+      // If participant has keys stored as an array (new format)
+      if (Array.isArray(currentParticipant)) {
+        keyHistory = currentParticipant;
+        const activeKey = keyHistory.find(k => k.isActive);
+        currentVersion = activeKey ? activeKey.keyVersion : keyHistory.length;
+      } 
+      // Legacy format: single key object
+      else if (currentParticipant.keyVersion) {
+        currentVersion = currentParticipant.keyVersion;
+        // Migrate legacy single key to array format
+        keyHistory = [{
+          publicKey: currentParticipant.publicKey,
+          keyId: currentParticipant.keyId,
+          keyVersion: currentParticipant.keyVersion,
+          exchangedAt: currentParticipant.exchangedAt,
+          isActive: false
+        }];
+      }
+    }
+
+    // Mark all previous keys as inactive
+    keyHistory.forEach(key => key.isActive = false);
+
+    // Add new key to history
+    const newKey = {
       publicKey: publicKey,
       keyId: keyId,
       keyVersion: currentVersion + 1,
       exchangedAt: new Date(),
-      lastRotated: currentParticipant ? new Date() : null
-    });
+      isActive: true
+    };
+    keyHistory.push(newKey);
+
+    // Keep only the last 3 keys for backward compatibility
+    if (keyHistory.length > 3) {
+      keyHistory = keyHistory.slice(-3);
+    }
+
+    // Update user's keys for this conversation (now storing array)
+    conversation.keyExchange.participants.set(userId.toString(), keyHistory);
 
     // Update status based on participants
     const totalParticipants = conversation.participants.length;
@@ -210,11 +244,56 @@ export const getParticipantKey = async (req, res) => {
     const userKeyData = conversation.keyExchange?.participants?.get(userId.toString());
 
 
-    if (!userKeyData || !userKeyData.publicKey) {
+    if (!userKeyData) {
   console.log('❌ No public key found for user');
       return res.status(404).json({
         success: false,
         message: "No public key found for this user in this conversation"
+      });
+    }
+
+    // Handle both new array format and legacy single key format
+    let keyInfo;
+    if (Array.isArray(userKeyData)) {
+      // New format: array of keys
+      const activeKey = userKeyData.find(k => k.isActive);
+      if (!activeKey) {
+        return res.status(404).json({
+          success: false,
+          message: "No active key found for this user"
+        });
+      }
+      keyInfo = {
+        publicKey: activeKey.publicKey,
+        keyId: activeKey.keyId,
+        keyVersion: activeKey.keyVersion,
+        exchangedAt: activeKey.exchangedAt,
+        keyHistory: userKeyData.map(k => ({
+          keyId: k.keyId,
+          keyVersion: k.keyVersion,
+          isActive: k.isActive,
+          exchangedAt: k.exchangedAt
+        }))
+      };
+    } else if (userKeyData.publicKey) {
+      // Legacy format: single key object
+      keyInfo = {
+        publicKey: userKeyData.publicKey,
+        keyId: userKeyData.keyId,
+        keyVersion: userKeyData.keyVersion,
+        exchangedAt: userKeyData.exchangedAt,
+        lastRotated: userKeyData.lastRotated,
+        keyHistory: [{
+          keyId: userKeyData.keyId,
+          keyVersion: userKeyData.keyVersion,
+          isActive: true,
+          exchangedAt: userKeyData.exchangedAt
+        }]
+      };
+    } else {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid key data format"
       });
     }
 
@@ -225,11 +304,7 @@ export const getParticipantKey = async (req, res) => {
         conversationId: conversationId,
         userId: userId,
         userName: targetUser.name,
-        publicKey: userKeyData.publicKey,
-        keyId: userKeyData.keyId,
-        keyVersion: userKeyData.keyVersion,
-        exchangedAt: userKeyData.exchangedAt,
-        lastRotated: userKeyData.lastRotated
+        ...keyInfo
       }
     });
 
@@ -289,30 +364,88 @@ export const getConversationKeys = async (req, res) => {
       if (participantsMap instanceof Map) {
         for (const [userId, keyData] of participantsMap.entries()) {
           if (userId === currentUserId.toString()) continue; // skip self
-          if (!keyData || !keyData.publicKey) continue;
+          if (!keyData) continue;
 
-          participantKeys.push({
-            userId: userId,
-            publicKey: keyData.publicKey,
-            keyId: keyData.keyId,
-            keyVersion: keyData.keyVersion,
-            exchangedAt: keyData.exchangedAt,
-            lastRotated: keyData.lastRotated
-          });
+          // Handle both array format (new) and single key format (legacy)
+          if (Array.isArray(keyData)) {
+            const activeKey = keyData.find(k => k.isActive);
+            if (activeKey && activeKey.publicKey) {
+              participantKeys.push({
+                userId: userId,
+                publicKey: activeKey.publicKey,
+                keyId: activeKey.keyId,
+                keyVersion: activeKey.keyVersion,
+                exchangedAt: activeKey.exchangedAt,
+                // Send ALL keys (not just history metadata) for fallback decryption
+                keys: keyData
+                  .sort((a, b) => (b.keyVersion || 0) - (a.keyVersion || 0))
+                  .map(k => ({
+                    publicKey: k.publicKey,
+                    keyId: k.keyId,
+                    keyVersion: k.keyVersion,
+                    exchangedAt: k.exchangedAt,
+                    isActive: k.isActive
+                  }))
+              });
+            }
+          } else if (keyData.publicKey) {
+            // Legacy format
+            participantKeys.push({
+              userId: userId,
+              publicKey: keyData.publicKey,
+              keyId: keyData.keyId,
+              keyVersion: keyData.keyVersion,
+              exchangedAt: keyData.exchangedAt,
+              lastRotated: keyData.lastRotated
+            });
+          }
         }
       } else if (typeof participantsMap === 'object') {
         for (const [userId, keyData] of Object.entries(participantsMap)) {
           if (userId === currentUserId.toString()) continue; // skip self
-          if (!keyData || !keyData.publicKey) continue;
+          if (!keyData) continue;
 
-          participantKeys.push({
-            userId: userId,
-            publicKey: keyData.publicKey,
-            keyId: keyData.keyId,
-            keyVersion: keyData.keyVersion,
-            exchangedAt: keyData.exchangedAt,
-            lastRotated: keyData.lastRotated
-          });
+          // Handle both array format (new) and single key format (legacy)
+          if (Array.isArray(keyData)) {
+            const activeKey = keyData.find(k => k.isActive);
+            if (activeKey && activeKey.publicKey) {
+              participantKeys.push({
+                userId: userId,
+                publicKey: activeKey.publicKey,
+                keyId: activeKey.keyId,
+                keyVersion: activeKey.keyVersion,
+                exchangedAt: activeKey.exchangedAt,
+                // Send ALL keys (not just history metadata) for fallback decryption
+                keys: keyData
+                  .sort((a, b) => (b.keyVersion || 0) - (a.keyVersion || 0))
+                  .map(k => ({
+                    publicKey: k.publicKey,
+                    keyId: k.keyId,
+                    keyVersion: k.keyVersion,
+                    exchangedAt: k.exchangedAt,
+                    isActive: k.isActive
+                  }))
+              });
+            }
+          } else if (keyData.publicKey) {
+            // Legacy format
+            participantKeys.push({
+              userId: userId,
+              publicKey: keyData.publicKey,
+              keyId: keyData.keyId,
+              keyVersion: keyData.keyVersion,
+              exchangedAt: keyData.exchangedAt,
+              lastRotated: keyData.lastRotated,
+              // Wrap single key in array format for consistency
+              keys: [{
+                publicKey: keyData.publicKey,
+                keyId: keyData.keyId,
+                keyVersion: keyData.keyVersion,
+                exchangedAt: keyData.exchangedAt,
+                isActive: true
+              }]
+            });
+          }
         }
       }
     }

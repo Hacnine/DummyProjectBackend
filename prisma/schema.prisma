@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Using MongoDB because original project uses Mongoose.
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  user
+  admin
+  superadmin
+  moderator
+  teacher
+}
+
+enum DeletionStatus {
+  scheduled
+  prevented
+  deleted
+  cancelled
+}
+
+model User {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                  String   @unique
+  email                 String   @unique
+  password              String
+  gender                String
+  image                 String?  @default("/images/avatar/default-avatar.svg")
+  bio                   String?  @db.String
+  role                  Role     @default(user)
+  is_active             Boolean  @default(false)
+  last_seen             DateTime?
+  themeIndex            Int      @default(0)
+  fileSendingAllowed    Boolean  @default(false)
+
+  // Notification settings stored as nullable booleans to match original schema
+  notification_new_message Boolean?
+  notification_mention     Boolean?
+  notification_sound       Boolean?
+
+  // Device tokens array
+  device_tokens         String[]
+
+  // Two factor auth fields
+  two_factor_enabled    Boolean  @default(false)
+  two_factor_secret     String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("users")
+}
+
+model UserDeletionSchedule {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String         @db.ObjectId
+  user              User           @relation(fields: [userId], references: [id])
+  scheduled_for     DateTime
+  reason            String         @default("Inactive for 7+ months")
+  status            DeletionStatus @default(scheduled)
+  preventedById     String?        @db.ObjectId
+  prevented_by      User?          @relation("Prevention", fields: [preventedById], references: [id])
+  prevented_at      DateTime?
+  prevention_reason String?
+  last_activity     DateTime?
+  notification_sent Boolean        @default(false)
+  final_warning_sent Boolean       @default(false)
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@map("userdeletionschedules")
+}

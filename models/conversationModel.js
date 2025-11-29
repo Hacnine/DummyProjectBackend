@@ -89,6 +89,7 @@ const conversationSchema = new Schema(
     ],
 
     // Conversation-specific encryption keys (per participant)
+    // Now supports up to 3 keys per user for backward compatibility with old messages
     keyExchange: {
       status: {
         type: String,
@@ -97,7 +98,7 @@ const conversationSchema = new Schema(
       },
       participants: {
         type: Map,
-        of: Schema.Types.Mixed, // Store objects with: publicKey, keyId, keyVersion, exchangedAt, lastRotated
+        of: Schema.Types.Mixed, // Store array of key objects: [{publicKey, keyId, keyVersion, exchangedAt, isActive}]
       },
       createdAt: { type: Date, default: null },
       lastActivity: { type: Date, default: null },

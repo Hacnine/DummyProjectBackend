@@ -9,6 +9,7 @@ import { registerChatHandlers } from "./chatSocket.js";
 import registerAlertnessHandlers from "./alertnessSocket.js";
 import { registerConversationActiveUsersHandlers } from "./conversationActiveUsers.js";
 import { registerConversationHandlers } from "./conversationSocket.js";
+import { registerEncryptionKeyHandlers } from "./encryptionKeySocket.js";
 
 export const initialSocketServer = async (server, redis) => {
   const allowedOrigins = process.env.ORIGIN_URL.split(',').map(s => s.trim());
@@ -50,6 +51,7 @@ export const initialSocketServer = async (server, redis) => {
     registerConversationActiveUsersHandlers(io, socket);
     registerChatHandlers(io, socket);
     registerAlertnessHandlers(io, socket);
+    registerEncryptionKeyHandlers(io, socket);
 
     // Existing conversation-specific handlers
     socket.on("join:conversation", (conversationId) => {

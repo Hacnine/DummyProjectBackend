@@ -15,7 +15,10 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon app",
-    "start": "node app.js"
+    "start": "node app.js",
+    "prisma:validate": "npx prisma validate",
+    "prisma:generate": "npx prisma generate",
+    "prisma:push": "npx prisma db push"
   },
   "author": "",
   "license": "ISC",
@@ -54,10 +57,12 @@
     "redis": "^5.6.0",
     "redis-adapter": "^0.2.0",
     "socket.io": "^4.8.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "@prisma/client": "6.19.0"
   },
   "devDependencies": {
     "cross-env": "^10.0.0",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "prisma": "^6.19.0"
   }
 }
