@@ -435,5 +435,108 @@ export const registerEncryptionKeyHandlers = (io, socket) => {
     }
   });
 
+  // V1 Encryption Key Exchange
+  socket.on("v1:exchange-key", async ({ conversationId, v1Key }, callback) => {
+    logger.info({ 
+      userId, 
+      conversationId, 
+      hasCallback: !!callback,
+      v1KeyLength: v1Key?.length 
+    }, "📥 Received v1:exchange-key event");
+    
+    if (!callback || typeof callback !== 'function') {
+      logger.error("❌ No callback provided for v1:exchange-key");
+      return;
+    }
+    
+    try {
+      if (!isValidObjectId(conversationId)) {
+        return callback({
+          success: false,
+          message: "Invalid conversation ID format"
+        });
+      }
+
+      if (!v1Key || typeof v1Key !== 'string' || v1Key.length < 16) {
+        return callback({
+          success: false,
+          message: 'V1 key must be at least 16 characters'
+        });
+      }
+
+      const conversation = await Conversation.findById(conversationId);
+      
+      if (!conversation) {
+        return callback({
+          success: false,
+          message: "Conversation not found"
+        });
+      }
+
+      // Check if user is participant
+      const isParticipant = conversation.participants.some(
+        (participantId) => participantId.toString() === userId.toString()
+      );
+
+      if (!isParticipant) {
+        return callback({
+          success: false,
+          message: "You are not a participant in this conversation"
+        });
+      }
+
+      // Initialize v1Keys if not exists
+      if (!conversation.v1Keys) {
+        conversation.v1Keys = new Map();
+      }
+
+      // Store V1 key for this user
+      conversation.v1Keys.set(userId.toString(), {
+        key: v1Key,
+        updatedAt: new Date()
+      });
+
+      // Mark the path as modified to ensure Mongoose saves the Map
+      conversation.markModified('v1Keys');
+
+      await conversation.save();
+
+      logger.info({ 
+        conversationId, 
+        userId 
+      }, "🔐 V1 key exchanged via socket");
+
+      callback({
+        success: true,
+        message: "V1 key saved successfully",
+        data: {
+          conversationId,
+          userId: userId.toString()
+        }
+      });
+
+      // Notify other participants
+      socket.to(`conv:${conversationId}`).emit("v1:key-updated", {
+        conversationId,
+        userId: userId.toString(),
+        timestamp: new Date()
+      });
+
+    } catch (error) {
+      logger.error({ 
+        error: error.message, 
+        stack: error.stack,
+        conversationId, 
+        userId 
+      }, "❌ V1 key exchange error");
+      
+      callback({
+        success: false,
+        message: "Failed to save V1 key: " + error.message,
+        error: error.message
+      });
+    }
+  });
+
   logger.info({ userId }, "🔐 Encryption key handlers registered");
 };

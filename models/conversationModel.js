@@ -103,6 +103,13 @@ const conversationSchema = new Schema(
       createdAt: { type: Date, default: null },
       lastActivity: { type: Date, default: null },
     },
+    
+    // V1 Encryption keys (CryptoJS AES + Corruption)
+    v1Keys: {
+      type: Map,
+      of: Schema.Types.Mixed, // Store V1 key objects: {key: string, updatedAt: Date}
+      default: new Map()
+    },
   },
   { timestamps: true }
 );
