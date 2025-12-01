@@ -193,6 +193,15 @@ export const sendFileMessage = async (req, res) => {
       return res.status(500).json({ message: "Failed to populate message" });
     }
 
+    // Decrypt if backend encrypted
+    if (populatedMessage.isBackendEncrypted && populatedMessage.text) {
+      try {
+        populatedMessage.text = await handleBackendDecryption(populatedMessage.text);
+      } catch (error) {
+        console.error('Failed to decrypt new message:', populatedMessage._id, error);
+      }
+    }
+
     // Add clientTempId to the response object (not stored in DB)
     const responseMessage = {
       ...populatedMessage.toObject(),
@@ -314,6 +323,15 @@ export const sendTextMessage = async ({
         clientTempId,
       });
       return { success: false, message: "Failed to populate message" };
+    }
+
+    // Decrypt if backend encrypted
+    if (populatedMessage.isBackendEncrypted && populatedMessage.text) {
+      try {
+        populatedMessage.text = await handleBackendDecryption(populatedMessage.text);
+      } catch (error) {
+        console.error('Failed to decrypt new message:', populatedMessage._id, error);
+      }
     }
 
     // Add clientTempId to the response object (not stored in DB)
@@ -673,7 +691,25 @@ export const markMessagesAsRead = async (conversationId, userId, io) => {
     })
       .populate("sender", "username")
       .populate("receiver", "username")
-      .populate("replyTo", "_id text messageType media");
+      .populate("replyTo", "_id text messageType media isBackendEncrypted");
+
+    // Decrypt backend-encrypted messages
+    await Promise.all(updatedMessages.map(async (msg) => {
+      if (msg.isBackendEncrypted && msg.text) {
+        try {
+          msg.text = await handleBackendDecryption(msg.text);
+        } catch (error) {
+          console.error('Failed to decrypt message:', msg._id, error);
+        }
+      }
+      if (msg.replyTo && msg.replyTo.isBackendEncrypted && msg.replyTo.text) {
+        try {
+          msg.replyTo.text = await handleBackendDecryption(msg.replyTo.text);
+        } catch (error) {
+          console.error('Failed to decrypt replyTo message:', msg.replyTo._id, error);
+        }
+      }
+    }));
 
     // Emit messagesRead event with full message objects
     if (updatedMessages.length > 0) {
@@ -775,6 +811,15 @@ export const editMessageCore = async ({
         message: "Failed to populate message",
         clientTempId,
       };
+    }
+
+    // Decrypt if backend encrypted
+    if (populatedMessage.isBackendEncrypted && populatedMessage.text) {
+      try {
+        populatedMessage.text = await handleBackendDecryption(populatedMessage.text);
+      } catch (error) {
+        console.error('Failed to decrypt edited message:', populatedMessage._id, error);
+      }
     }
 
     // Add clientTempId to response
@@ -1051,7 +1096,7 @@ export const sendReplyCore = async ({
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username")
       .populate("receiver", "username")
-      .populate("replyTo", "_id text messageType media")
+      .populate("replyTo", "_id text messageType media isBackendEncrypted")
       .lean();
 
     if (populatedMessage?.replyTo) {
@@ -1060,7 +1105,17 @@ export const sendReplyCore = async ({
         text: populatedMessage.replyTo.text,
         messageType: populatedMessage.replyTo.messageType,
         media: populatedMessage.replyTo.media,
+        isBackendEncrypted: populatedMessage.replyTo.isBackendEncrypted,
       };
+    }
+
+    // Decrypt replyTo if encrypted
+    if (populatedMessage?.replyTo && populatedMessage.replyTo.isBackendEncrypted && populatedMessage.replyTo.text) {
+      try {
+        populatedMessage.replyTo.text = await handleBackendDecryption(populatedMessage.replyTo.text);
+      } catch (error) {
+        console.error('Failed to decrypt replyTo in new message:', populatedMessage.replyTo._id, error);
+      }
     }
 
     if (!populatedMessage) {
@@ -1073,6 +1128,15 @@ export const sendReplyCore = async ({
         message: "Failed to populate message",
         clientTempId,
       };
+    }
+
+    // Decrypt if backend encrypted
+    if (populatedMessage.isBackendEncrypted && populatedMessage.text) {
+      try {
+        populatedMessage.text = await handleBackendDecryption(populatedMessage.text);
+      } catch (error) {
+        console.error('Failed to decrypt new message:', populatedMessage._id, error);
+      }
     }
 
     const responseMessage = {
@@ -1160,7 +1224,7 @@ export const replyMessage = async (req, res) => {
   const populatedMessage = await Message.findById(result.message._id)
     .populate("sender", "username")
     .populate("receiver", "username")
-    .populate("replyTo", "_id text messageType media");
+    .populate("replyTo", "_id text messageType media isBackendEncrypted");
 
   if (!populatedMessage) {
     console.error(
@@ -1168,6 +1232,24 @@ export const replyMessage = async (req, res) => {
       result.message._id
     );
     return res.status(500).json({ message: "Failed to populate message" });
+  }
+
+  // Decrypt if backend encrypted
+  if (populatedMessage.isBackendEncrypted && populatedMessage.text) {
+    try {
+      populatedMessage.text = await handleBackendDecryption(populatedMessage.text);
+    } catch (error) {
+      console.error('Failed to decrypt new message:', populatedMessage._id, error);
+    }
+  }
+
+  // Decrypt replyTo if encrypted
+  if (populatedMessage?.replyTo && populatedMessage.replyTo.isBackendEncrypted && populatedMessage.replyTo.text) {
+    try {
+      populatedMessage.replyTo.text = await handleBackendDecryption(populatedMessage.replyTo.text);
+    } catch (error) {
+      console.error('Failed to decrypt replyTo in new message:', populatedMessage.replyTo._id, error);
+    }
   }
 
   // Add clientTempId to the response object
@@ -1209,10 +1291,28 @@ export const getMessages = async (req, res) => {
     })
       .populate("sender", "username")
       .populate("receiver", "username")
-      .populate("replyTo", "_id text messageType media")
+      .populate("replyTo", "_id text messageType media isBackendEncrypted")
       .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
+
+    // Decrypt backend-encrypted messages
+    await Promise.all(messages.map(async (msg) => {
+      if (msg.isBackendEncrypted && msg.text) {
+        try {
+          msg.text = await handleBackendDecryption(msg.text);
+        } catch (error) {
+          console.error('Failed to decrypt message:', msg._id, error);
+        }
+      }
+      if (msg.replyTo && msg.replyTo.isBackendEncrypted && msg.replyTo.text) {
+        try {
+          msg.replyTo.text = await handleBackendDecryption(msg.replyTo.text);
+        } catch (error) {
+          console.error('Failed to decrypt replyTo message:', msg.replyTo._id, error);
+        }
+      }
+    }));
 
     const totalMessages = await Message.countDocuments({
       conversation: conversationId,
