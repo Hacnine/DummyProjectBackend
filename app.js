@@ -18,6 +18,8 @@ import logger from "./utils/logger.js";
 import messageCleanupJob from "./schedulers/messageCleanupJob.js";
 import { startCronJobs } from "./schedulers/sessionCreationJob.js";
 import { startCronJobsForScheduledDeletion } from "./schedulers/scheduledDeletionJob.js";
+import { startEncryptionKeyRotation } from "./schedulers/encryptionKeyRotationJob.js";
+import { initializeEncryptionKeys } from "./services/backendEncryptionService.js";
 import { initialSocketServer } from "./sockets/socketIndex.js";
 import routeIndex from "./routes/routeIndex.js";
 import { apiLimiter } from "./middlewares/rateLimiter.js";
@@ -36,6 +38,10 @@ let io; // Declare io for export
     // Connect DB & Redis
     await connectDB(DATABASE_URL);
     const redis = await connectRedis();
+    
+    // Initialize backend encryption keys
+    await initializeEncryptionKeys();
+    logger.info('🔐 Backend encryption service initialized');
 
     // Core middlewares
     // app.use(pinoHttp({ logger }));
@@ -102,6 +108,8 @@ let io; // Declare io for export
     messageCleanupJob.start();
     startCronJobs();
     startCronJobsForScheduledDeletion();
+    startEncryptionKeyRotation();
+    logger.info('🕐 All cron jobs started including encryption key rotation');
 
     // Start server
     server.listen(port, () => logger.info(`Server running on port ${port}`));

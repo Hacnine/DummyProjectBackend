@@ -20,6 +20,11 @@ import {
   shouldMessageBeEncrypted,
   logEncryptionActivity 
 } from "../services/zeroKnowledgeEncryptionService.js";
+import {
+  encryptMessage as backendEncrypt,
+  decryptMessage as backendDecrypt,
+  isBackendEncrypted
+} from "../services/backendEncryptionService.js";
 
 // Helper to map MIME types to schema's media.type enum
 const mapMimeTypeToMediaType = (mimeType) => {
@@ -29,6 +34,57 @@ const mapMimeTypeToMediaType = (mimeType) => {
   if (mimeType.startsWith("audio/")) return "audio";
   return "file";
 };
+
+/**
+ * Helper to handle backend encryption for messages
+ * If text is marked for backend encryption (has special marker), encrypt it
+ * @param {string} text - Message text
+ * @returns {Promise<Object>} - { text, isBackendEncrypted }
+ */
+async function handleBackendEncryption(text) {
+  if (!text || typeof text !== 'string') {
+    return { text, isBackendEncrypted: false };
+  }
+  
+  // Check if text is marked for backend encryption
+  // Frontend sends: "__BACKEND_ENCRYPT__:actualMessage"
+  if (text.startsWith('__BACKEND_ENCRYPT__:')) {
+    const actualMessage = text.substring('__BACKEND_ENCRYPT__:'.length);
+    const encrypted = await backendEncrypt(actualMessage);
+    return { text: encrypted, isBackendEncrypted: true };
+  }
+  
+  // Check if already backend encrypted
+  if (isBackendEncrypted(text)) {
+    return { text, isBackendEncrypted: true };
+  }
+  
+  // Plain text or frontend encrypted
+  return { text, isBackendEncrypted: false };
+}
+
+/**
+ * Helper to handle backend decryption for messages
+ * @param {string} text - Message text
+ * @returns {Promise<string>} - Decrypted text or original
+ */
+async function handleBackendDecryption(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+  
+  // Try to decrypt if it's backend encrypted
+  if (isBackendEncrypted(text)) {
+    try {
+      return await backendDecrypt(text);
+    } catch (error) {
+      console.error('❌ Backend decryption failed:', error);
+      return text; // Return encrypted text if decryption fails
+    }
+  }
+  
+  return text; // Plain text or frontend encrypted
+}
 
 // Send file and/or text message via API
 export const sendFileMessage = async (req, res) => {
@@ -88,6 +144,15 @@ export const sendFileMessage = async (req, res) => {
       participantsCount: conversation.participants.length,
       status: conversation.keyExchange?.status || 'none'
     });
+    
+    // Handle backend encryption if requested
+    let processedText = resolvedText;
+    let isBackendEncryptedFlag = false;
+    if (resolvedText) {
+      const encryptionResult = await handleBackendEncryption(resolvedText);
+      processedText = encryptionResult.text;
+      isBackendEncryptedFlag = encryptionResult.isBackendEncrypted;
+    }
 
     // Prepare base message data
     const baseMessageData = {
@@ -98,12 +163,13 @@ export const sendFileMessage = async (req, res) => {
       messageType,
       status: "sent",
       scheduledDeletionTime: computeDeletionTime(conversation),
+      isBackendEncrypted: isBackendEncryptedFlag
     };
 
     // Enhance message with zero-knowledge encryption handling
     const messageDataWithEncryption = enhanceMessageWithZeroKnowledgeEncryption(
       baseMessageData,
-      resolvedText
+      processedText
     );
 
     const newMessage = await Message.create(messageDataWithEncryption);
@@ -206,6 +272,11 @@ export const sendTextMessage = async ({
       participantsCount: conversation.participants.length,
       status: conversation.keyExchange?.status || 'none'
     });
+    
+    // Handle backend encryption if requested
+    const encryptionResult = await handleBackendEncryption(text);
+    const processedText = encryptionResult.text;
+    const isBackendEncryptedFlag = encryptionResult.isBackendEncrypted;
 
     // Prepare base message data
     const baseMessageData = {
@@ -215,12 +286,13 @@ export const sendTextMessage = async ({
       messageType: "text",
       status: "sent",
       scheduledDeletionTime: computeDeletionTime(conversation),
+      isBackendEncrypted: isBackendEncryptedFlag
     };
 
     // Enhance message with zero-knowledge encryption handling
     const messageDataWithEncryption = enhanceMessageWithZeroKnowledgeEncryption(
       baseMessageData,
-      text
+      processedText
     );
 
     const newMessage = await Message.create(messageDataWithEncryption);

@@ -30,6 +30,12 @@ const messageSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    
+    // Backend server-side encryption flag
+    isBackendEncrypted: {
+      type: Boolean,
+      default: false,
+    },
 
     messageType: {
       type: String,
