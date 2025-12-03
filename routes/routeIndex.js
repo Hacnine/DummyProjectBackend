@@ -18,6 +18,7 @@ import noticeRouter from "./noticeRoutes.js";
 import siteSecurityRouter from "./siteSecurityRoutes.js";
 import conversationKeyRouter from "./conversationKeyRoutes.js";
 import reportRouter from "./reportRoutes.js";
+import permissionRouter from "./permissionRoutes.js";
 
 const apiRoute = Router();
 
@@ -39,6 +40,7 @@ apiRoute.use("/social", socialRoutes);
 apiRoute.use("/site-security", siteSecurityRouter);
 apiRoute.use("/conversations", conversationKeyRouter);
 apiRoute.use("/reports", reportRouter);
+apiRoute.use("/permissions", permissionRouter);
 
 // Health check
 apiRoute.get("/health", (req, res) => res.status(200).send("OK"));

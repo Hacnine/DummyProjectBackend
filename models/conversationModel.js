@@ -60,6 +60,18 @@ const conversationSchema = new Schema(
       ], // 0 = Sunday, 6 = Saturday
     },
     themeIndex: { type: Number, default: 0, required: false },
+    
+    // Granular message permissions for the conversation
+    messagePermissions: {
+      text: { type: Boolean, default: true },
+      image: { type: Boolean, default: true },
+      voice: { type: Boolean, default: false },
+      video: { type: Boolean, default: false },
+      file: { type: Boolean, default: false },
+      sticker: { type: Boolean, default: true },
+      gif: { type: Boolean, default: true },
+    },
+    
     last_message: {
       message: { type: String, default: "" },
       sender: { type: Schema.Types.ObjectId, ref: "User" }, // Last sender
