@@ -59,7 +59,11 @@ export const verifyUserInConversation = async (conversation, userId) => {
 };
 
 export const computeDeletionTime = (conversation) => {
-  const deleteAfterHours = conversation.autoDeleteMessagesAfter || 24;
+  const deleteAfterHours = conversation.autoDeleteMessagesAfter;
+  // If autoDeleteMessagesAfter is 0 or not set, don't schedule deletion (return null)
+  if (!deleteAfterHours || deleteAfterHours <= 0) {
+    return null;
+  }
   return new Date(Date.now() + deleteAfterHours * 60 * 60 * 1000);
 };
 

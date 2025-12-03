@@ -72,9 +72,9 @@ const conversationSchema = new Schema(
       },
     ],
     autoDeleteMessagesAfter: {
-      type: Number, // in hours
+      type: Number, // in hours (0 = disabled/off)
       default: 24,
-      min: 1,
+      min: 0,
     },
     blockList: [
       {

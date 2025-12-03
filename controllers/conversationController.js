@@ -419,6 +419,106 @@ export const deleteConversation = async (req, res) => {
   }
 };
 
+// Update disappearing messages setting for a conversation
+export const updateDisappearingMessages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { autoDeleteMessagesAfter } = req.body;
+    const userId = req.user._id;
+
+    // Validate conversation ID
+    if (!id || !mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid conversation ID." });
+    }
+
+    // Validate autoDeleteMessagesAfter (must be a positive number, in hours)
+    if (
+      autoDeleteMessagesAfter === undefined ||
+      typeof autoDeleteMessagesAfter !== "number" ||
+      autoDeleteMessagesAfter < 0
+    ) {
+      return res.status(400).json({
+        message: "autoDeleteMessagesAfter must be a positive number (hours).",
+      });
+    }
+
+    // Find conversation
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found." });
+    }
+
+    // Check if user is a participant
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === userId.toString()
+    );
+    if (!isParticipant) {
+      return res
+        .status(403)
+        .json({ message: "You are not a participant in this conversation." });
+    }
+
+    // Update the setting (0 means disabled/off)
+    conversation.autoDeleteMessagesAfter = autoDeleteMessagesAfter;
+    await conversation.save();
+
+    // Emit socket event to notify participants
+    if (req.io) {
+      req.io.to(id).emit("disappearingMessagesUpdated", {
+        conversationId: id,
+        autoDeleteMessagesAfter,
+        updatedBy: userId,
+      });
+    }
+
+    res.status(200).json({
+      message: "Disappearing messages setting updated successfully.",
+      autoDeleteMessagesAfter: conversation.autoDeleteMessagesAfter,
+    });
+  } catch (error) {
+    console.error("Error updating disappearing messages:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
+// Get disappearing messages setting for a conversation
+export const getDisappearingMessages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    // Validate conversation ID
+    if (!id || !mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid conversation ID." });
+    }
+
+    // Find conversation
+    const conversation = await Conversation.findById(id).select(
+      "participants autoDeleteMessagesAfter"
+    );
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found." });
+    }
+
+    // Check if user is a participant
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === userId.toString()
+    );
+    if (!isParticipant) {
+      return res
+        .status(403)
+        .json({ message: "You are not a participant in this conversation." });
+    }
+
+    res.status(200).json({
+      autoDeleteMessagesAfter: conversation.autoDeleteMessagesAfter || 24,
+    });
+  } catch (error) {
+    console.error("Error getting disappearing messages:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
 export const getPendingConversationRequests = async (req, res) => {
   try {
     const userId = req.user._id;
